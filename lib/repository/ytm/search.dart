@@ -10,7 +10,7 @@ class AudoraSearch {
   Future<List<Track>> search(
     String query, {
     String filter = Params.songs,
-    int limit = 10,
+    int limit = 20,
     String? visitorData,
   }) async {
     final body = Map<String, dynamic>.from(
@@ -94,8 +94,19 @@ class AudoraSearch {
             '';
 
         // Thumbnail
-        String? thumbnail =
-            renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails']?[0]?['url'];
+        final thumbs =
+            renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails']
+                as List?;
+        String? thumbnail;
+        if (thumbs != null && thumbs.isNotEmpty) {
+          thumbnail = thumbs.last['url'];
+        }
+        if (thumbnail != null) {
+          thumbnail = thumbnail!.replaceAll(
+            RegExp(r'=w\d+-h\d+'),
+            '=w1080-h1080',
+          );
+        }
 
         if (videoId.isNotEmpty) {
           tracks.add(

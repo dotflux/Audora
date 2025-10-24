@@ -47,11 +47,27 @@ class AudoraPlayer {
   Future<Map<String, dynamic>?> getAudioFromServer(String videoId) async {
     try {
       final serverUrl = Uri.parse(
-        'http:/localhost:3000/audio?videoId=$videoId',
+        'http://localhost:3000/audio?videoId=$videoId',
       );
-      final response = await HttpClient()
+
+      final httpClient = HttpClient();
+      httpClient.connectionTimeout = const Duration(seconds: 60);
+
+      final request = await httpClient
           .getUrl(serverUrl)
-          .then((req) => req.close());
+          .timeout(
+            const Duration(seconds: 60),
+            onTimeout: () {
+              throw TimeoutException('Request timed out after 60 seconds');
+            },
+          );
+
+      final response = await request.close().timeout(
+        const Duration(seconds: 60),
+        onTimeout: () {
+          throw TimeoutException('Response timed out after 60 seconds');
+        },
+      );
 
       if (response.statusCode != 200) {
         print(
@@ -60,10 +76,7 @@ class AudoraPlayer {
         return null;
       }
 
-      final body = await response.transform(utf8.decoder).join();
-      final data = jsonDecode(body) as Map<String, dynamic>;
-
-      return data;
+      return {'url': serverUrl.toString()};
     } catch (e, st) {
       print('[ERROR] Failed to fetch audio from Node server: $e');
       print(st);
