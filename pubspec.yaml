@@ -46,6 +46,7 @@ dependencies:
   uri: ^1.0.0
   shelf: ^1.4.2
   path_provider: ^2.1.5
+  audio_waveforms: ^1.1.0
 
 dev_dependencies:
   flutter_test:
