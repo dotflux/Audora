@@ -5,6 +5,7 @@ import 'package:crypto/crypto.dart';
 import 'package:uri/uri.dart';
 import 'dart:io';
 import 'dart:convert';
+import 'package:http/http.dart' as http;
 
 class AudoraPlayer {
   final AudoraClient client;
@@ -50,24 +51,9 @@ class AudoraPlayer {
         'http://localhost:3000/audio?videoId=$videoId',
       );
 
-      final httpClient = HttpClient();
-      httpClient.connectionTimeout = const Duration(seconds: 60);
-
-      final request = await httpClient
-          .getUrl(serverUrl)
-          .timeout(
-            const Duration(seconds: 60),
-            onTimeout: () {
-              throw TimeoutException('Request timed out after 60 seconds');
-            },
-          );
-
-      final response = await request.close().timeout(
-        const Duration(seconds: 60),
-        onTimeout: () {
-          throw TimeoutException('Response timed out after 60 seconds');
-        },
-      );
+      final response = await http
+          .get(serverUrl)
+          .timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) {
         print(
@@ -76,7 +62,8 @@ class AudoraPlayer {
         return null;
       }
 
-      return {'url': serverUrl.toString()};
+      final data = jsonDecode(response.body);
+      return data;
     } catch (e, st) {
       print('[ERROR] Failed to fetch audio from Node server: $e');
       print(st);

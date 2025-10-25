@@ -6,7 +6,9 @@ void main() async {
   final player = AudoraPlayer(client);
 
   try {
-    final tracks = await search.search('Yoasobi', limit: 5);
+    final tracks = await search.fetchPlaylist(
+      'PLgzTt0k8mXzEk586ze4BjvDXR7c-TUSnx',
+    );
 
     for (var t in tracks) {
       print('Title   : ${t.title}');
