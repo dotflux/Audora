@@ -8,12 +8,19 @@ class MiniPlayer extends StatelessWidget {
   final AudioPlayer player;
   final MediaItem? mediaItem;
   final ValueNotifier<bool>? isLoadingNotifier;
+  final ValueNotifier<MediaItem?> currentTrackNotifier;
+
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
 
   const MiniPlayer({
     super.key,
     required this.player,
     this.mediaItem,
     this.isLoadingNotifier,
+    required this.currentTrackNotifier,
+    this.onNext,
+    this.onPrevious,
   });
 
   @override
@@ -29,8 +36,14 @@ class MiniPlayer extends StatelessWidget {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      PlayerScreen(player: player, mediaItem: mediaItem!),
+                  builder: (_) => PlayerScreen(
+                    player: player,
+                    mediaItem: mediaItem!,
+                    currentTrackNotifier: currentTrackNotifier,
+                    isLoadingNotifier: isLoadingNotifier,
+                    onNext: onNext,
+                    onPrevious: onPrevious,
+                  ),
                 ),
               );
             }
@@ -53,7 +66,7 @@ class MiniPlayer extends StatelessWidget {
                         BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                           child: Container(
-                            color: Colors.black.withOpacity(0.4),
+                            color: Colors.black.withAlpha((0.4 * 255).round()),
                           ),
                         ),
                       ],
@@ -64,7 +77,9 @@ class MiniPlayer extends StatelessWidget {
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
                     borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: Colors.white.withOpacity(0.1)),
+                    border: Border.all(
+                      color: Colors.white.withAlpha((0.2 * 255).round()),
+                    ),
                   ),
                   child: Row(
                     children: [
@@ -105,7 +120,13 @@ class MiniPlayer extends StatelessWidget {
                           ],
                         ),
                       ),
-
+                      IconButton(
+                        icon: const Icon(
+                          Icons.skip_previous,
+                          color: Colors.white,
+                        ),
+                        onPressed: isLoading ? null : onPrevious,
+                      ),
                       if (isLoading)
                         const SizedBox(
                           width: 32,
@@ -135,6 +156,10 @@ class MiniPlayer extends StatelessWidget {
                             );
                           },
                         ),
+                      IconButton(
+                        icon: const Icon(Icons.skip_next, color: Colors.white),
+                        onPressed: isLoading ? null : onNext,
+                      ),
                     ],
                   ),
                 ),

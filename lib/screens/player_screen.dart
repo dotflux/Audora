@@ -11,11 +11,20 @@ import '../widgets/track_info.dart';
 class PlayerScreen extends StatefulWidget {
   final AudioPlayer player;
   final MediaItem mediaItem;
+  final ValueNotifier<bool>? isLoadingNotifier;
+  final ValueNotifier<MediaItem?> currentTrackNotifier;
+
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
 
   const PlayerScreen({
     super.key,
     required this.player,
     required this.mediaItem,
+    this.isLoadingNotifier,
+    required this.currentTrackNotifier,
+    this.onNext,
+    this.onPrevious,
   });
 
   @override
@@ -27,6 +36,31 @@ class _PlayerScreenState extends State<PlayerScreen> {
   double _dragValue = 0.0;
   bool _isLiked = false;
   LoopMode _loopMode = LoopMode.off;
+
+  MediaItem? media;
+
+  @override
+  void initState() {
+    super.initState();
+    media = widget.currentTrackNotifier.value;
+
+    widget.currentTrackNotifier.addListener(_onTrackChanged);
+    widget.isLoadingNotifier?.addListener(_onLoadingChanged);
+  }
+
+  void _onTrackChanged() {
+    if (!mounted) return;
+    setState(() {
+      media = widget.currentTrackNotifier.value;
+      _dragValue = 0.0;
+      _isDragging = false;
+    });
+  }
+
+  void _onLoadingChanged() {
+    if (!mounted) return;
+    setState(() {});
+  }
 
   void _cycleLoopMode() {
     setState(() {
@@ -42,17 +76,25 @@ class _PlayerScreenState extends State<PlayerScreen> {
   }
 
   @override
+  void dispose() {
+    widget.currentTrackNotifier.removeListener(_onTrackChanged);
+    widget.isLoadingNotifier?.removeListener(_onLoadingChanged);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final media = widget.mediaItem;
+    if (media == null) return const SizedBox.shrink();
+
     final bottomPadding = MediaQuery.of(context).padding.bottom > 0
         ? MediaQuery.of(context).padding.bottom
         : 8.0;
 
     return Stack(
       children: [
-        if (media.artUri != null) ...[
+        if (media!.artUri != null) ...[
           Positioned.fill(
-            child: Image.network(media.artUri.toString(), fit: BoxFit.cover),
+            child: Image.network(media!.artUri.toString(), fit: BoxFit.cover),
           ),
           Positioned.fill(
             child: BackdropFilter(
@@ -61,7 +103,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           ),
         ],
-
         Scaffold(
           backgroundColor: Colors.transparent,
           appBar: AppBar(
@@ -91,17 +132,20 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      if (media.artUri != null)
+                      if (media!.artUri != null)
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: 28),
                           child: GlowingAlbumArt(
-                            imageUrl: media.artUri.toString(),
+                            imageUrl: media!.artUri.toString(),
                             size: 340,
                             borderRadius: 16,
                           ),
                         ),
                       const SizedBox(height: 18),
-                      TrackInfo(title: media.title, artist: media.artist ?? ''),
+                      TrackInfo(
+                        title: media!.title,
+                        artist: media!.artist ?? '',
+                      ),
                       const SizedBox(height: 14),
                       PositionSlider(
                         player: widget.player,
@@ -114,6 +158,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           setState(() => _isDragging = false);
                           widget.player.seek(Duration(milliseconds: v.toInt()));
                         },
+                        isLoadingNotifier: widget.isLoadingNotifier,
                       ),
                       const SizedBox(height: 24),
                       const AnimatedEqualizer(),
@@ -124,6 +169,9 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         onLike: () => setState(() => _isLiked = !_isLiked),
                         loopMode: _loopMode,
                         cycleLoopMode: _cycleLoopMode,
+                        isLoadingNotifier: widget.isLoadingNotifier,
+                        onNext: widget.onNext,
+                        onPrevious: widget.onPrevious,
                       ),
                       SizedBox(height: bottomPadding),
                     ],

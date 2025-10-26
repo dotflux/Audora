@@ -75,11 +75,43 @@ class HomeScreen extends StatelessWidget {
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-        title: const Text(
-          'Home',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+        titleSpacing: 0,
+        title: Stack(
+          alignment: Alignment.center,
+          children: [
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Padding(
+                padding: const EdgeInsets.only(left: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Image.asset(
+                      'assets/icon/AudoraNoText.png',
+                      width: 32,
+                      height: 32,
+                    ),
+                    const SizedBox(width: 6),
+                  ],
+                ),
+              ),
+            ),
+
+            Center(
+              child: Text(
+                'Home',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 20,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+          ],
         ),
       ),
+
       body: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
@@ -169,24 +201,36 @@ class HomeScreen extends StatelessWidget {
                                     ? DecorationImage(
                                         image: NetworkImage(imageUrl),
                                         fit: BoxFit.cover,
-                                        colorFilter: ColorFilter.mode(
-                                          Colors.black.withAlpha(
-                                            (0.2 * 255).round(),
-                                          ),
-                                          BlendMode.darken,
-                                        ),
                                       )
                                     : null,
                                 color: Colors.grey[900],
                               ),
                               child: Stack(
                                 children: [
-                                  if (imageUrl == null)
-                                    const Center(
-                                      child: Icon(
-                                        Icons.music_note,
-                                        color: Colors.white38,
-                                        size: 40,
+                                  if (imageUrl != null)
+                                    ClipRRect(
+                                      borderRadius: BorderRadius.circular(16),
+                                      child: Image.network(
+                                        imageUrl,
+                                        width: double.infinity,
+                                        height: double.infinity,
+                                        fit: BoxFit.cover,
+                                      ),
+                                    )
+                                  else
+                                    Container(
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey[900],
+                                        borderRadius: BorderRadius.circular(16),
+                                      ),
+                                      child: const Center(
+                                        child: Icon(
+                                          Icons.music_note,
+                                          color: Colors.white38,
+                                          size: 40,
+                                        ),
                                       ),
                                     ),
 
@@ -196,7 +240,7 @@ class HomeScreen extends StatelessWidget {
                                       future: getPaletteColors(imageUrl),
                                       builder: (context, paletteSnapshot) {
                                         Color overlayColor = Colors.black
-                                            .withAlpha((0.6 * 255).round());
+                                            .withAlpha((0.5 * 255).round());
                                         if (paletteSnapshot.hasData &&
                                             paletteSnapshot.data!.isNotEmpty) {
                                           overlayColor = paletteSnapshot.data!
@@ -207,30 +251,38 @@ class HomeScreen extends StatelessWidget {
                                                     ? a
                                                     : b,
                                               )
-                                              .withAlpha((0.6 * 255).round());
+                                              .withAlpha((0.5 * 255).round());
                                         }
 
-                                        return ClipPath(
-                                          clipper: BottomWaveClipper(),
-                                          child: Container(
-                                            width: double.infinity,
-                                            height: 100,
-                                            alignment: Alignment.center,
+                                        return Container(
+                                          height: 70,
+                                          width: double.infinity,
+                                          decoration: BoxDecoration(
                                             color: overlayColor,
-                                            padding: const EdgeInsets.symmetric(
-                                              horizontal: 8,
+                                            borderRadius:
+                                                const BorderRadius.only(
+                                                  bottomLeft: Radius.circular(
+                                                    16,
+                                                  ),
+                                                  bottomRight: Radius.circular(
+                                                    16,
+                                                  ),
+                                                ),
+                                          ),
+                                          alignment: Alignment.center,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 8,
+                                          ),
+                                          child: Text(
+                                            playlist['title']!,
+                                            textAlign: TextAlign.center,
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 14,
                                             ),
-                                            child: Text(
-                                              playlist['title']!,
-                                              textAlign: TextAlign.center,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontWeight: FontWeight.bold,
-                                                fontSize: 14,
-                                              ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
+                                            maxLines: 2,
+                                            overflow: TextOverflow.ellipsis,
                                           ),
                                         );
                                       },
@@ -245,6 +297,7 @@ class HomeScreen extends StatelessWidget {
                     },
                   ),
                 ),
+
                 const SizedBox(height: 24),
               ],
             ],
@@ -253,21 +306,4 @@ class HomeScreen extends StatelessWidget {
       ),
     );
   }
-}
-
-class BottomWaveClipper extends CustomClipper<Path> {
-  @override
-  Path getClip(Size size) {
-    final path = Path();
-    path.moveTo(0, 0);
-    path.quadraticBezierTo(size.width / 4, 20, size.width / 2, 0);
-    path.quadraticBezierTo(3 * size.width / 4, -20, size.width, 0);
-    path.lineTo(size.width, size.height);
-    path.lineTo(0, size.height);
-    path.close();
-    return path;
-  }
-
-  @override
-  bool shouldReclip(covariant CustomClipper<Path> oldClipper) => false;
 }

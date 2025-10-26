@@ -7,6 +7,10 @@ class PlaybackControls extends StatelessWidget {
   final VoidCallback onLike;
   final LoopMode loopMode;
   final VoidCallback cycleLoopMode;
+  final ValueNotifier<bool>? isLoadingNotifier;
+
+  final VoidCallback? onNext;
+  final VoidCallback? onPrevious;
 
   const PlaybackControls({
     super.key,
@@ -15,6 +19,9 @@ class PlaybackControls extends StatelessWidget {
     required this.onLike,
     required this.loopMode,
     required this.cycleLoopMode,
+    this.isLoadingNotifier,
+    this.onNext,
+    this.onPrevious,
   });
 
   Widget _fancyButton(
@@ -64,68 +71,82 @@ class PlaybackControls extends StatelessWidget {
   Widget build(BuildContext context) {
     const double playButtonSize = 78.0;
 
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10.0),
-      child: StreamBuilder<PlayerState>(
-        stream: player.playerStateStream,
-        builder: (context, snapshot) {
-          final isPlaying = snapshot.data?.playing ?? false;
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: [
-              _fancyButton(
-                isLiked ? Icons.favorite : Icons.favorite_border,
-                size: 22,
-                active: isLiked,
-                onPressed: onLike,
-              ),
-              _fancyButton(
-                Icons.skip_previous,
-                size: 28,
-                onPressed: () async => await player.seekToPrevious(),
-              ),
-              Container(
-                width: playButtonSize + 18,
-                height: playButtonSize + 18,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: const Color.fromRGBO(43, 108, 255, 0.22),
-                      blurRadius: 20,
-                      spreadRadius: 1,
-                    ),
-                  ],
+    return ValueListenableBuilder<bool>(
+      valueListenable: isLoadingNotifier ?? ValueNotifier(false),
+      builder: (context, isLoading, _) {
+        return StreamBuilder<PlayerState>(
+          stream: player.playerStateStream,
+          builder: (context, snapshot) {
+            final isPlaying = snapshot.data?.playing ?? false;
+
+            return Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                _fancyButton(
+                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  size: 22,
+                  active: isLiked,
+                  onPressed: onLike,
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: IconButton(
-                    iconSize: playButtonSize,
-                    icon: Icon(
-                      isPlaying
-                          ? Icons.pause_circle_filled
-                          : Icons.play_circle_fill,
-                      color: Colors.white,
-                    ),
-                    onPressed: () => isPlaying ? player.pause() : player.play(),
+                _fancyButton(
+                  Icons.skip_previous,
+                  size: 28,
+                  onPressed: isLoadingNotifier?.value ?? false
+                      ? null
+                      : onPrevious,
+                ),
+                Container(
+                  width: playButtonSize + 18,
+                  height: playButtonSize + 18,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: const Color.fromRGBO(43, 108, 255, 0.22),
+                        blurRadius: 20,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: isLoading
+                        ? const Center(
+                            child: SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: CircularProgressIndicator(strokeWidth: 3),
+                            ),
+                          )
+                        : IconButton(
+                            iconSize: playButtonSize,
+                            icon: Icon(
+                              isPlaying
+                                  ? Icons.pause_circle_filled
+                                  : Icons.play_circle_fill,
+                              color: Colors.white,
+                            ),
+                            onPressed: () =>
+                                isPlaying ? player.pause() : player.play(),
+                          ),
                   ),
                 ),
-              ),
-              _fancyButton(
-                Icons.skip_next,
-                size: 28,
-                onPressed: () async => await player.seekToNext(),
-              ),
-              _fancyButton(
-                loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat,
-                size: 22,
-                active: loopMode != LoopMode.off,
-                onPressed: cycleLoopMode,
-              ),
-            ],
-          );
-        },
-      ),
+                _fancyButton(
+                  Icons.skip_next,
+                  size: 28,
+                  onPressed: isLoadingNotifier?.value ?? false ? null : onNext,
+                ),
+                _fancyButton(
+                  loopMode == LoopMode.one ? Icons.repeat_one : Icons.repeat,
+                  size: 22,
+                  active: loopMode != LoopMode.off,
+                  onPressed: isLoading ? null : cycleLoopMode,
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

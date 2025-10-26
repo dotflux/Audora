@@ -6,7 +6,7 @@ class PlaylistScreen extends StatefulWidget {
   final String playlistId;
   final String title;
   final AudoraSearch search;
-  final Future<void> Function(Track) playTrack;
+  final Future<void> Function(Track, {List<Track>? queue}) playTrack;
 
   const PlaylistScreen({
     super.key,
@@ -62,7 +62,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
               itemBuilder: (context, index) {
                 final track = _tracks[index];
                 return GestureDetector(
-                  onTap: () => widget.playTrack(track),
+                  onTap: () => widget.playTrack(track, queue: _tracks),
                   child: Container(
                     margin: const EdgeInsets.symmetric(vertical: 6),
                     child: Row(

@@ -123,7 +123,10 @@ class _SearchScreenState extends State<SearchScreen> {
                         final track = _tracks[index];
                         return GestureDetector(
                           onTap: () async {
-                            await widget.audioManager.playTrack(track);
+                            await widget.audioManager.playTrack(
+                              track,
+                              queue: _tracks,
+                            );
                           },
                           child: Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),

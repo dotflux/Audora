@@ -69,6 +69,9 @@ class _MainScreenState extends State<MainScreen> {
                   player: _audioManager.audioPlayer,
                   mediaItem: currentTrack,
                   isLoadingNotifier: _audioManager.isFetchingNotifier,
+                  currentTrackNotifier: _audioManager.currentTrackNotifier,
+                  onNext: _audioManager.skipToNext,
+                  onPrevious: _audioManager.skipToPrevious,
                 ),
               );
             },
