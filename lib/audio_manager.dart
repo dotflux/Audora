@@ -3,6 +3,8 @@ import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
 import '../audora_music.dart';
 import './utils/log.dart';
+import 'dart:async';
+import '/data/recently_played.dart';
 
 class AudioManager {
   final AudoraPlayer player;
@@ -80,7 +82,9 @@ class AudioManager {
       if (_currentPlayingVideoId != requestedVideoId) return;
 
       isFetchingNotifier.value = false;
-      await audioPlayer.play();
+      audioPlayer.play();
+
+      unawaited(RecentlyPlayed.addTrack(track));
     } catch (e, st) {
       print('[ERROR] Playback failed: $e');
       print(st);

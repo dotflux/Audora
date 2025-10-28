@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../audora_music.dart';
 import '../audio_manager.dart';
 import 'playlist_screen.dart';
+import '/data/recently_played.dart';
 
 class HomeScreen extends StatefulWidget {
   final AudoraSearch search;
@@ -19,33 +20,63 @@ class HomeScreen extends StatefulWidget {
 }
 
 class _HomeScreenState extends State<HomeScreen> {
+  static Map<String, List<Track>>? _cachedCharts;
+  static DateTime? _lastFetchTime;
+
   late Future<Map<String, List<Track>>> allChartsFuture;
+  late Future<List<Track>> recentlyPlayedFuture;
   final PageController _pageController = PageController(viewportFraction: 0.75);
   Timer? _autoScrollTimer;
+  StreamSubscription? _recentlyPlayedSub;
 
   @override
   void initState() {
     super.initState();
-    allChartsFuture = fetchAllCharts();
+
+    if (_cachedCharts != null &&
+        _lastFetchTime != null &&
+        DateTime.now().difference(_lastFetchTime!) <
+            const Duration(minutes: 10)) {
+      allChartsFuture = Future.value(_cachedCharts);
+    } else {
+      allChartsFuture = _fetchAndCacheCharts(forceRefresh: true);
+    }
+
+    recentlyPlayedFuture = RecentlyPlayed.getTracks();
+
+    _recentlyPlayedSub = RecentlyPlayed.onChange.listen((_) {
+      setState(() {
+        recentlyPlayedFuture = RecentlyPlayed.getTracks();
+      });
+    });
   }
 
   @override
   void dispose() {
+    _recentlyPlayedSub?.cancel();
     _autoScrollTimer?.cancel();
     _pageController.dispose();
     super.dispose();
   }
 
-  Future<Map<String, List<Track>>> fetchAllCharts() async {
-    final charts = AudoraCharts(widget.search.client);
+  Future<Map<String, List<Track>>> _fetchAndCacheCharts({
+    bool forceRefresh = false,
+  }) async {
+    if (!forceRefresh &&
+        _cachedCharts != null &&
+        _lastFetchTime != null &&
+        DateTime.now().difference(_lastFetchTime!) <
+            const Duration(minutes: 10)) {
+      return _cachedCharts!;
+    }
 
+    final charts = AudoraCharts(widget.search.client);
     final countryCodes = {
       'India': 'IN',
       'Japan': 'JP',
       'United Kingdom': 'UK',
       'Korea': 'KR',
     };
-
     final genres = ['Romance', 'Phonk', 'Sad', 'Lo-Fi'];
 
     try {
@@ -57,8 +88,7 @@ class _HomeScreenState extends State<HomeScreen> {
             countryCode: entry.value,
           );
           return MapEntry(entry.key, tracks);
-        } catch (e) {
-          debugPrint('Error fetching ${entry.key}: $e');
+        } catch (_) {
           return MapEntry(entry.key, <Track>[]);
         }
       });
@@ -67,32 +97,35 @@ class _HomeScreenState extends State<HomeScreen> {
         try {
           final tracks = await widget.search.fetchGenreSongs(entry);
           return MapEntry(entry, tracks);
-        } catch (e) {
-          debugPrint('Error fetching ${entry}: $e');
+        } catch (_) {
           return MapEntry(entry, <Track>[]);
         }
       });
 
       final results = await Future.wait([...countryFutures, ...genreFutures]);
-      final mapData = Map.fromEntries(results);
-
       final topTracks = await topFuture;
 
-      return {'Top Charts': topTracks, ...mapData};
+      final data = {'Top Charts': topTracks, ...Map.fromEntries(results)};
+      _cachedCharts = data;
+      _lastFetchTime = DateTime.now();
+
+      return data;
     } catch (e) {
-      debugPrint('Error fetching charts: $e');
-      return {};
+      debugPrint("⚠️ Chart fetch error: $e");
+      return _cachedCharts ?? {};
     }
   }
 
-  void startAutoScroll(int itemCount) {
+  void _startAutoScroll(int count) {
     _autoScrollTimer?.cancel();
+    if (count <= 1) return;
+
     _autoScrollTimer = Timer.periodic(const Duration(seconds: 4), (_) {
-      if (_pageController.hasClients && itemCount > 1) {
-        final nextPage = _pageController.page!.round() + 1;
+      if (_pageController.hasClients) {
+        final next = (_pageController.page?.round() ?? 0) + 1;
         _pageController.animateToPage(
-          nextPage % itemCount,
-          duration: const Duration(milliseconds: 800),
+          next % count,
+          duration: const Duration(milliseconds: 600),
           curve: Curves.easeInOut,
         );
       }
@@ -101,13 +134,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Future<void> _handleTapTrack(Track track, {List<Track>? queue}) async {
     final isPlaylist = (track.isPlaylist == true);
-    final playlistId = track.playlistId;
-    if (isPlaylist && playlistId != null && playlistId.isNotEmpty) {
+    if (isPlaylist && track.playlistId?.isNotEmpty == true) {
       Navigator.push(
         context,
         MaterialPageRoute(
           builder: (_) => PlaylistScreen(
-            playlistId: playlistId,
+            playlistId: track.playlistId!,
             title: track.title,
             search: widget.search,
             playTrack: widget.audioManager.playTrack,
@@ -118,6 +150,10 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     await widget.audioManager.playTrack(track, queue: queue);
+
+    setState(() {
+      recentlyPlayedFuture = RecentlyPlayed.getTracks();
+    });
   }
 
   @override
@@ -145,34 +181,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ],
         ),
       ),
-
       body: FutureBuilder<Map<String, List<Track>>>(
         future: allChartsFuture,
         builder: (context, snapshot) {
-          if (snapshot.connectionState == ConnectionState.waiting) {
+          final charts = snapshot.data ?? _cachedCharts ?? {};
+          if (snapshot.connectionState == ConnectionState.waiting &&
+              charts.isEmpty) {
             return const Center(
-              child: Padding(
-                padding: EdgeInsets.all(32.0),
-                child: CircularProgressIndicator(color: Colors.white),
-              ),
+              child: CircularProgressIndicator(color: Colors.white),
             );
           }
 
-          if (snapshot.hasError) {
-            return Center(
-              child: Padding(
-                padding: const EdgeInsets.all(16.0),
-                child: Text(
-                  "Failed to load charts: ${snapshot.error}",
-                  style: const TextStyle(color: Colors.redAccent),
-                  textAlign: TextAlign.center,
-                ),
-              ),
-            );
-          }
-
-          final chartData = snapshot.data ?? {};
-          if (chartData.isEmpty) {
+          if (charts.isEmpty) {
             return const Center(
               child: Text(
                 "No charts available.",
@@ -181,84 +201,71 @@ class _HomeScreenState extends State<HomeScreen> {
             );
           }
 
-          final topCharts = chartData.remove('Top Charts');
-          final others = chartData;
+          final top = charts['Top Charts'] ?? [];
+          final others = Map.of(charts)..remove('Top Charts');
 
-          if (topCharts != null && topCharts.isNotEmpty) {
-            WidgetsBinding.instance.addPostFrameCallback((_) {
-              startAutoScroll(topCharts.length);
-            });
+          if (top.isNotEmpty) {
+            WidgetsBinding.instance.addPostFrameCallback(
+              (_) => _startAutoScroll(top.length),
+            );
           }
 
-          return SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    "Recently Played",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 160,
-                    child: ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: 5,
-                      itemBuilder: (context, index) {
-                        return Container(
-                          width: 140,
-                          margin: const EdgeInsets.only(right: 12),
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(16),
-                            color: Colors.grey[850],
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.music_note,
-                              color: Colors.white38,
-                              size: 40,
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-                  ),
-                  const SizedBox(height: 30),
-
-                  if (topCharts != null && topCharts.isNotEmpty) ...[
+          return RefreshIndicator(
+            onRefresh: () async {
+              setState(() {
+                allChartsFuture = _fetchAndCacheCharts(forceRefresh: true);
+              });
+            },
+            color: Colors.white,
+            backgroundColor: Colors.black,
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     const Text(
-                      "Top Charts",
+                      "Recently Played",
                       style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    const SizedBox(height: 14),
-                    _buildTopCarousel(topCharts),
-                    const SizedBox(height: 32),
-                  ],
-
-                  for (final entry in others.entries) ...[
-                    Text(
-                      entry.key,
-                      style: const TextStyle(
                         color: Colors.white,
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
                     ),
                     const SizedBox(height: 12),
-                    _buildHorizontalList(entry.value),
-                    const SizedBox(height: 24),
+                    _buildRecentlyPlayed(),
+                    const SizedBox(height: 30),
+
+                    if (top.isNotEmpty) ...[
+                      const Text(
+                        "Top Charts",
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 14),
+                      _buildTopCarousel(top),
+                      const SizedBox(height: 32),
+                    ],
+
+                    for (final entry in others.entries) ...[
+                      Text(
+                        entry.key,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildHorizontalList(entry.value),
+                      const SizedBox(height: 24),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
           );
@@ -267,96 +274,155 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  Widget _buildTopCarousel(List<Track> topCharts) {
+  Widget _buildRecentlyPlayed() {
+    return FutureBuilder<List<Track>>(
+      future: recentlyPlayedFuture,
+      builder: (context, snapshot) {
+        final tracks = snapshot.data ?? [];
+        if (snapshot.connectionState == ConnectionState.waiting &&
+            tracks.isEmpty) {
+          return const Center(
+            child: CircularProgressIndicator(color: Colors.white),
+          );
+        }
+        if (tracks.isEmpty) {
+          return const Text(
+            "No recently played tracks yet.",
+            style: TextStyle(color: Colors.white54),
+          );
+        }
+
+        return SizedBox(
+          height: 160,
+          child: ListView.builder(
+            scrollDirection: Axis.horizontal,
+            itemCount: tracks.length,
+            itemBuilder: (context, i) {
+              final track = tracks[i];
+              return GestureDetector(
+                onTap: () => _handleTapTrack(track, queue: tracks),
+                child: Container(
+                  width: 140,
+                  margin: const EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    image: track.thumbnail != null
+                        ? DecorationImage(
+                            image: NetworkImage(track.thumbnail!),
+                            fit: BoxFit.cover,
+                          )
+                        : null,
+                  ),
+                  child: Align(
+                    alignment: Alignment.bottomCenter,
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 6,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withOpacity(0.6),
+                        borderRadius: const BorderRadius.vertical(
+                          bottom: Radius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        track.title,
+                        textAlign: TextAlign.center,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 13,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildTopCarousel(List<Track> top) {
     return SizedBox(
       height: 330,
       child: PageView.builder(
         controller: _pageController,
-        itemCount: topCharts.length.clamp(0, 10),
+        itemCount: top.length.clamp(0, 10),
         itemBuilder: (context, index) {
-          final track = topCharts[index];
-          final imageUrl = track.thumbnail;
-
-          return AnimatedBuilder(
-            animation: _pageController,
-            builder: (context, child) {
-              double value = 1.0;
-              if (_pageController.position.haveDimensions) {
-                value = _pageController.page! - index;
-                value = (1 - (value.abs() * 0.25)).clamp(0.8, 1.0);
-              }
-              return Center(
-                child: Transform.scale(scale: value, child: child),
-              );
-            },
-            child: GestureDetector(
-              onTap: () => _handleTapTrack(track, queue: topCharts),
-              child: Container(
-                margin: const EdgeInsets.symmetric(horizontal: 10),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.6),
-                      blurRadius: 20,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
-                ),
-                child: ClipRRect(
-                  borderRadius: BorderRadius.circular(24),
-                  child: Stack(
-                    fit: StackFit.expand,
-                    children: [
-                      if (imageUrl != null)
-                        Image.network(imageUrl, fit: BoxFit.cover)
-                      else
-                        Container(color: Colors.grey[850]),
-                      Container(
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            begin: Alignment.bottomCenter,
-                            end: Alignment.topCenter,
-                            colors: [
-                              Colors.black.withValues(alpha: 0.75),
-                              Colors.transparent,
-                            ],
-                          ),
-                        ),
-                      ),
-                      Positioned(
-                        bottom: 16,
-                        left: 16,
-                        right: 16,
-                        child: Column(
-                          children: [
-                            Text(
-                              track.title,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              track.artist ?? "Unknown Artist",
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                              ),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
+          final track = top[index];
+          return GestureDetector(
+            onTap: () => _handleTapTrack(track, queue: top),
+            child: Container(
+              margin: const EdgeInsets.symmetric(horizontal: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(24),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.6),
+                    blurRadius: 20,
+                  ),
+                ],
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(24),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (track.thumbnail != null)
+                      Image.network(track.thumbnail!, fit: BoxFit.cover)
+                    else
+                      Container(color: Colors.grey[850]),
+                    Container(
+                      decoration: BoxDecoration(
+                        gradient: LinearGradient(
+                          begin: Alignment.bottomCenter,
+                          end: Alignment.topCenter,
+                          colors: [
+                            Colors.black.withValues(alpha: 0.75),
+                            Colors.transparent,
                           ],
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    Positioned(
+                      bottom: 16,
+                      left: 16,
+                      right: 16,
+                      child: Column(
+                        children: [
+                          Text(
+                            track.title,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            track.artist ?? "Unknown Artist",
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 14,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -372,10 +438,8 @@ class _HomeScreenState extends State<HomeScreen> {
       child: ListView.builder(
         scrollDirection: Axis.horizontal,
         itemCount: tracks.length,
-        itemBuilder: (context, index) {
-          final track = tracks[index];
-          final imageUrl = track.thumbnail;
-
+        itemBuilder: (context, i) {
+          final track = tracks[i];
           return GestureDetector(
             onTap: () => _handleTapTrack(track, queue: tracks),
             child: Container(
@@ -384,53 +448,38 @@ class _HomeScreenState extends State<HomeScreen> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(16),
                 color: Colors.grey[900],
-                image: imageUrl != null
+                image: track.thumbnail != null
                     ? DecorationImage(
-                        image: NetworkImage(imageUrl),
+                        image: NetworkImage(track.thumbnail!),
                         fit: BoxFit.cover,
                       )
                     : null,
               ),
-              child: Stack(
-                children: [
-                  if (imageUrl != null)
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(16),
-                      child: Image.network(
-                        imageUrl,
-                        width: double.infinity,
-                        height: double.infinity,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  Align(
-                    alignment: Alignment.bottomCenter,
-                    child: Container(
-                      height: 70,
-                      width: double.infinity,
-                      decoration: BoxDecoration(
-                        color: Colors.black.withValues(alpha: 0.5),
-                        borderRadius: const BorderRadius.only(
-                          bottomLeft: Radius.circular(16),
-                          bottomRight: Radius.circular(16),
-                        ),
-                      ),
-                      alignment: Alignment.center,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        track.title,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
+              child: Align(
+                alignment: Alignment.bottomCenter,
+                child: Container(
+                  height: 70,
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.5),
+                    borderRadius: const BorderRadius.only(
+                      bottomLeft: Radius.circular(16),
+                      bottomRight: Radius.circular(16),
                     ),
                   ),
-                ],
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  alignment: Alignment.center,
+                  child: Text(
+                    track.title,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
               ),
             ),
           );
