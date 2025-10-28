@@ -4,19 +4,20 @@ void main() async {
   final client = AudoraClient();
   final search = AudoraSearch(client);
   final player = AudoraPlayer(client);
+  final charts = AudoraCharts(client);
 
   try {
-    final tracks = await search.fetchPlaylist(
-      'PLgzTt0k8mXzEk586ze4BjvDXR7c-TUSnx',
-    );
+    final romance = await search.fetchGenreSongs('romance');
+    final phonk = await search.fetchGenreSongs('phonk', limit: 30);
 
-    for (var t in tracks) {
-      print('Title   : ${t.title}');
-      print('Artist  : ${t.artist}');
-      print('VideoID : ${t.videoId}');
-      print("Thumbnail : ${t.thumbnail}");
-      final audioUrl = await player.getAudioUrl(t.videoId);
-      print('Audio URL: $audioUrl\n');
+    print('❤️ romance songs: ${romance.length}');
+    for (final t in romance) {
+      print('${t.title} — ${t.artist} - ${t.videoId} - ${t.thumbnail}');
+    }
+
+    print('\n😈 phonk songs: ${phonk.length}');
+    for (final t in phonk) {
+      print("${t.title} - ${t.artist} - ${t.videoId} - ${t.thumbnail}");
     }
   } catch (e) {
     print('Error: $e');

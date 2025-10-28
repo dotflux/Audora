@@ -40,6 +40,54 @@ class AudoraSearch {
 
     final tracks = <Track>[];
 
+    String? findPlaylistId(dynamic node) {
+      if (node == null) return null;
+      if (node is Map) {
+        if (node.containsKey('playlistId') && node['playlistId'] is String) {
+          final pid = node['playlistId'] as String;
+          if (pid.isNotEmpty) return pid;
+        }
+
+        if (node.containsKey('browseId') && node['browseId'] is String) {
+          final b = (node['browseId'] as String).toString();
+          if (b.startsWith('PL') || b.startsWith('VL') || b.startsWith('RD')) {
+            return b;
+          }
+        }
+
+        for (final v in node.values) {
+          final found = findPlaylistId(v);
+          if (found != null) return found;
+        }
+      } else if (node is List) {
+        for (final e in node) {
+          final found = findPlaylistId(e);
+          if (found != null) return found;
+        }
+      }
+      return null;
+    }
+
+    String? pickBestThumbnail(dynamic thumbsNode) {
+      try {
+        final thumbs = thumbsNode as List?;
+        if (thumbs == null || thumbs.isEmpty) return null;
+
+        thumbs.sort((a, b) {
+          final aw = (a?['width'] ?? 0) as int;
+          final bw = (b?['width'] ?? 0) as int;
+          return bw.compareTo(aw);
+        });
+        final url = thumbs.first['url']?.toString();
+        if (url != null) {
+          return url.replaceAll(RegExp(r'=w\d+-h\d+'), '=w1080-h1080');
+        }
+      } catch (_) {}
+      return null;
+    }
+
+    final seenTitles = <String>{};
+
     for (var section in sections) {
       List? items;
 
@@ -48,16 +96,14 @@ class AudoraSearch {
       } else if (section['musicCardShelfRenderer'] != null) {
         items = section['musicCardShelfRenderer']['contents'] as List?;
       } else {
-        print('Unknown section type: ${section.keys}');
         continue;
       }
 
       if (items == null) continue;
 
       for (var item in items) {
-        final renderer = item['musicResponsiveListItemRenderer'];
+        final renderer = item['musicResponsiveListItemRenderer'] ?? item;
         if (renderer == null) {
-          print('No musicResponsiveListItemRenderer found');
           continue;
         }
 
@@ -70,7 +116,7 @@ class AudoraSearch {
               flexColumns[0]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
                   as List?;
           if (titleRuns != null && titleRuns.isNotEmpty) {
-            title = titleRuns[0]?['text'] ?? '';
+            title = (titleRuns.map((r) => r['text'] ?? '').join()).toString();
           }
 
           for (var i = 1; i < flexColumns.length; i++) {
@@ -89,38 +135,67 @@ class AudoraSearch {
           }
         }
 
-        // VideoID
-        String videoId =
-            renderer['navigationEndpoint']?['watchEndpoint']?['videoId'] ??
-            renderer['overlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchEndpoint']?['videoId'] ??
-            '';
+        String videoId = '';
+        try {
+          videoId =
+              renderer['navigationEndpoint']?['watchEndpoint']?['videoId'] ??
+              renderer['overlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchEndpoint']?['videoId'] ??
+              '';
+        } catch (_) {
+          videoId = '';
+        }
 
-        // Thumbnail
-        final thumbs =
-            renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails']
-                as List?;
         String? thumbnail;
-        if (thumbs != null && thumbs.isNotEmpty) {
-          thumbnail = thumbs.last['url'];
-        }
-        if (thumbnail != null) {
-          thumbnail = thumbnail!.replaceAll(
-            RegExp(r'=w\d+-h\d+'),
-            '=w1080-h1080',
-          );
+        try {
+          final thumbsNode =
+              renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'];
+          thumbnail = pickBestThumbnail(thumbsNode);
+        } catch (_) {
+          thumbnail = null;
         }
 
-        if (videoId.isNotEmpty) {
+        final playlistId = findPlaylistId(renderer);
+
+        final isPlaylist =
+            playlistId != null && playlistId.isNotEmpty && (videoId == '');
+
+        final normalizedTitle = (title.isNotEmpty ? title : 'Unknown Title')
+            .trim()
+            .toLowerCase();
+
+        if (seenTitles.contains(normalizedTitle)) {
+          continue;
+        }
+
+        if (isPlaylist) {
+          try {
+            final preview = await fetchPlaylist(playlistId, limit: 1);
+            if (preview.isEmpty) {
+              continue;
+            }
+          } catch (e) {
+            print('Playlist probe failed for $playlistId: $e');
+            continue;
+          }
+        }
+
+        if ((videoId.isNotEmpty) || isPlaylist) {
+          final effectiveTitle = title.isNotEmpty ? title : 'Unknown Title';
           tracks.add(
             Track(
-              title: title,
+              title: effectiveTitle,
               artist: artist,
               videoId: videoId,
               thumbnail: thumbnail,
+              playlistId: playlistId,
+              isPlaylist: isPlaylist,
             ),
           );
-          if (tracks.length >= limit) break;
+
+          seenTitles.add(normalizedTitle);
         }
+
+        if (tracks.length >= limit) break;
       }
 
       if (tracks.length >= limit) break;
@@ -137,7 +212,9 @@ class AudoraSearch {
     void _collectFromNode(dynamic node) {
       if (node == null) return;
       if (node is List) {
-        for (final e in node) _collectFromNode(e);
+        for (final e in node) {
+          _collectFromNode(e);
+        }
         return;
       }
       if (node is Map<String, dynamic>) {
@@ -287,5 +364,17 @@ class AudoraSearch {
     }
 
     return out;
+  }
+
+  Future<List<Track>> fetchGenreSongs(String genre, {int limit = 20}) async {
+    final query = '$genre songs';
+    print('🎧 fetching genre chart for "$query"...');
+    try {
+      final tracks = await search(query, filter: Params.songs, limit: limit);
+      return tracks;
+    } catch (e) {
+      print('⚠️ failed to fetch genre chart for $genre: $e');
+      return [];
+    }
   }
 }

@@ -3,6 +3,7 @@ import '../audora_music.dart';
 import '../audio_manager.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'playlist_screen.dart';
 
 class SearchScreen extends StatefulWidget {
   final AudioManager audioManager;
@@ -61,6 +62,27 @@ class _SearchScreenState extends State<SearchScreen> {
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  Future<void> _handleTapTrack(BuildContext context, Track track) async {
+    if (track.isPlaylist == true &&
+        track.playlistId != null &&
+        track.playlistId!.isNotEmpty) {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => PlaylistScreen(
+            playlistId: track.playlistId!,
+            title: track.title,
+            search: _search,
+            playTrack: widget.audioManager.playTrack,
+          ),
+        ),
+      );
+      return;
+    }
+
+    await widget.audioManager.playTrack(track, queue: _tracks);
   }
 
   @override
@@ -122,12 +144,7 @@ class _SearchScreenState extends State<SearchScreen> {
                       itemBuilder: (context, index) {
                         final track = _tracks[index];
                         return GestureDetector(
-                          onTap: () async {
-                            await widget.audioManager.playTrack(
-                              track,
-                              queue: _tracks,
-                            );
-                          },
+                          onTap: () => _handleTapTrack(context, track),
                           child: Container(
                             margin: const EdgeInsets.symmetric(vertical: 6),
                             child: Row(
@@ -158,19 +175,51 @@ class _SearchScreenState extends State<SearchScreen> {
                                     crossAxisAlignment:
                                         CrossAxisAlignment.start,
                                     children: [
-                                      Text(
-                                        track.title,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          color: Colors.white,
-                                          fontWeight: FontWeight.w600,
-                                          fontSize: 16,
-                                        ),
+                                      Row(
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              track.title,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontWeight: FontWeight.w600,
+                                                fontSize: 16,
+                                              ),
+                                            ),
+                                          ),
+                                          if (track.isPlaylist == true)
+                                            Padding(
+                                              padding: const EdgeInsets.only(
+                                                left: 8,
+                                              ),
+                                              child: Container(
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 4,
+                                                    ),
+                                                decoration: BoxDecoration(
+                                                  color: Colors.white
+                                                      .withOpacity(0.06),
+                                                  borderRadius:
+                                                      BorderRadius.circular(8),
+                                                ),
+                                                child: const Text(
+                                                  'Playlist',
+                                                  style: TextStyle(
+                                                    color: Colors.white70,
+                                                    fontSize: 12,
+                                                  ),
+                                                ),
+                                              ),
+                                            ),
+                                        ],
                                       ),
                                       const SizedBox(height: 2),
                                       Text(
-                                        track.artist,
+                                        track.artist ?? '',
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
