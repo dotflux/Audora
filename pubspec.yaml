@@ -53,6 +53,7 @@ dependencies:
   hive: ^2.2.3
   hive_flutter: ^1.1.0
   shared_preferences: ^2.5.3
+  audio_visualizer: ^1.1.0
 
 dev_dependencies:
   flutter_test:
@@ -85,10 +86,6 @@ flutter:
     - family: Norwester
       fonts:
         - asset: assets/fonts/norwester.otf
-
-    - family: PublicSans
-      fonts:
-        - asset: assets/fonts/public-sans-v1.003/otf/PublicSans-Regular.otf
 
     - family: CodePro
       fonts:

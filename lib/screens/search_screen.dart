@@ -4,6 +4,7 @@ import '../audio_manager.dart';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'playlist_screen.dart';
+import '../widgets/add_to_playlist.dart';
 
 class SearchScreen extends StatefulWidget {
   final AudioManager audioManager;
@@ -176,6 +177,8 @@ class _SearchScreenState extends State<SearchScreen> {
                                         CrossAxisAlignment.start,
                                     children: [
                                       Row(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.center,
                                         children: [
                                           Expanded(
                                             child: Text(
@@ -189,7 +192,42 @@ class _SearchScreenState extends State<SearchScreen> {
                                               ),
                                             ),
                                           ),
-                                          if (track.isPlaylist == true)
+                                          if (!track
+                                              .isPlaylist) // ✅ only show for songs
+                                            GestureDetector(
+                                              onTap: () {
+                                                showModalBottomSheet(
+                                                  context: context,
+                                                  isScrollControlled: true,
+                                                  backgroundColor: const Color(
+                                                    0xFF181818,
+                                                  ),
+                                                  shape: const RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.vertical(
+                                                          top: Radius.circular(
+                                                            20,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                  builder: (_) =>
+                                                      AddToPlaylistDialog(
+                                                        track: track,
+                                                      ),
+                                                );
+                                              },
+                                              child: const Padding(
+                                                padding: EdgeInsets.only(
+                                                  left: 8,
+                                                ),
+                                                child: Icon(
+                                                  Icons.playlist_add,
+                                                  color: Colors.white70,
+                                                  size: 20,
+                                                ),
+                                              ),
+                                            ),
+                                          if (track.isPlaylist)
                                             Padding(
                                               padding: const EdgeInsets.only(
                                                 left: 8,
@@ -217,6 +255,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                             ),
                                         ],
                                       ),
+
                                       const SizedBox(height: 2),
                                       Text(
                                         track.artist ?? '',
@@ -238,7 +277,6 @@ class _SearchScreenState extends State<SearchScreen> {
                     ),
             ),
           ),
-          const SizedBox(height: 80),
         ],
       ),
     );

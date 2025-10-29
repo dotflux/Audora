@@ -33,17 +33,23 @@ class MiniPlayer extends StatelessWidget {
         return GestureDetector(
           onTap: () {
             if (!isLoading && mediaItem != null) {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => PlayerScreen(
+              Navigator.of(context).push(
+                PageRouteBuilder(
+                  transitionDuration: const Duration(milliseconds: 200),
+                  pageBuilder: (_, __, ___) => PlayerScreen(
                     player: player,
                     mediaItem: mediaItem!,
                     currentTrackNotifier: currentTrackNotifier,
+
                     isLoadingNotifier: isLoadingNotifier,
                     onNext: onNext,
                     onPrevious: onPrevious,
                   ),
+                  transitionsBuilder: (_, animation, __, child) {
+                    return FadeTransition(opacity: animation, child: child);
+                  },
+                  opaque: true,
+                  barrierColor: Colors.black,
                 ),
               );
             }

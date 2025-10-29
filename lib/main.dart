@@ -5,6 +5,7 @@ import 'repository/audio_handler.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
+import 'data/custom_playlists.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +24,7 @@ void main() async {
 
   await Hive.initFlutter();
   await Hive.openBox('recentlyPlayed');
+  await CustomPlaylists.init();
 
   runApp(Provider.value(value: audioHandler, child: const MyApp()));
 }
