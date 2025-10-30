@@ -95,6 +95,25 @@ class AudioManager {
     }
   }
 
+  void updateQueue(List<Track> newQueue) {
+    final currentTrackId = _queue.isEmpty || _currentIndex < 0
+        ? null
+        : _queue[_currentIndex].videoId;
+
+    _queue = List.from(newQueue);
+
+    if (currentTrackId != null) {
+      final newIndex = _queue.indexWhere((t) => t.videoId == currentTrackId);
+      _currentIndex = newIndex != -1
+          ? newIndex
+          : (_currentIndex >= _queue.length
+                ? _queue.length - 1
+                : _currentIndex);
+    } else {
+      _currentIndex = _queue.isEmpty ? -1 : 0;
+    }
+  }
+
   void _handleTrackComplete() async {
     if (_isHandlingCompletion) return;
     _isHandlingCompletion = true;

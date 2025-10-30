@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import '../data/custom_playlists.dart';
 import 'package:audora/audora_music.dart';
+import 'dart:io';
+import '../widgets/default_playlist_art.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Future<void> Function(Track, {List<Track>? queue}) playTrack;
@@ -84,7 +86,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
         SnackBar(content: Text('Playlist "$name" already exists')),
       );
     }
-
     _loadPlaylists();
   }
 
@@ -98,8 +99,25 @@ class _LibraryScreenState extends State<LibraryScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black,
-        title: const Text("Library", style: TextStyle(color: Colors.white)),
+        backgroundColor: Colors.black.withOpacity(0.86),
+        elevation: 0,
+        titleSpacing: 10,
+        title: Row(
+          children: [
+            Image.asset('assets/icon/AudoraNoText.png', width: 34, height: 34),
+            const SizedBox(width: 8),
+            const Text(
+              'AUDORA',
+              style: TextStyle(
+                fontSize: 22,
+                letterSpacing: 1.6,
+                color: Colors.white,
+              ),
+            ),
+            const SizedBox(width: 6),
+            const Icon(Icons.circle, size: 6, color: Colors.white24),
+          ],
+        ),
         actions: [
           IconButton(
             onPressed: _createPlaylist,
@@ -116,24 +134,98 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 style: TextStyle(color: Colors.white54, fontSize: 15),
               ),
             )
-          : ListView.builder(
-              itemCount: _playlists.length,
-              itemBuilder: (context, index) {
-                final name = _playlists[index];
-                return ListTile(
-                  title: Text(
-                    name,
-                    style: const TextStyle(color: Colors.white, fontSize: 17),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete, color: Colors.white54),
-                    onPressed: () => _deletePlaylist(name),
-                  ),
-                  onTap: () {
-                    widget.openPlaylist(id: name, isCustom: true, title: name);
-                  },
-                );
-              },
+          : Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
+              child: ListView.separated(
+                itemCount: _playlists.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                itemBuilder: (context, index) {
+                  final name = _playlists[index];
+                  final trackCount = CustomPlaylists.getTracks(name).length;
+                  final cover = CustomPlaylists.getCoverImage(name);
+                  final coverFile = cover != null ? File(cover) : null;
+
+                  final coverImage =
+                      (coverFile != null && coverFile.existsSync())
+                      ? Image.file(
+                          coverFile,
+                          height: 70,
+                          width: 70,
+                          fit: BoxFit.cover,
+                        )
+                      : DefaultPlaylistArt(title: name, size: 70);
+
+                  return InkWell(
+                    borderRadius: BorderRadius.circular(18),
+                    onTap: () => widget.openPlaylist(
+                      id: name,
+                      title: name,
+                      isCustom: true,
+                    ),
+                    child: Container(
+                      height: 110,
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(18),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.5),
+                            blurRadius: 10,
+                            offset: const Offset(0, 4),
+                          ),
+                        ],
+                      ),
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(18),
+                          color: Colors.black.withOpacity(0.4),
+                        ),
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        child: Row(
+                          children: [
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: coverImage,
+                            ),
+                            const SizedBox(width: 14),
+                            Expanded(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    name,
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 17,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Text(
+                                    "$trackCount tracks",
+                                    style: const TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 13,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.delete_outline,
+                                color: Colors.white70,
+                              ),
+                              onPressed: () => _deletePlaylist(name),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
             ),
     );
   }
