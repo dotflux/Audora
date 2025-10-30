@@ -8,8 +8,18 @@ import '../widgets/add_to_playlist.dart';
 
 class SearchScreen extends StatefulWidget {
   final AudioManager audioManager;
+  final void Function({
+    required String id,
+    required String title,
+    required bool isCustom,
+  })
+  openPlaylist;
 
-  const SearchScreen({super.key, required this.audioManager});
+  const SearchScreen({
+    super.key,
+    required this.audioManager,
+    required this.openPlaylist,
+  });
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -69,16 +79,10 @@ class _SearchScreenState extends State<SearchScreen> {
     if (track.isPlaylist == true &&
         track.playlistId != null &&
         track.playlistId!.isNotEmpty) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PlaylistScreen(
-            playlistId: track.playlistId!,
-            title: track.title,
-            search: _search,
-            playTrack: widget.audioManager.playTrack,
-          ),
-        ),
+      widget.openPlaylist(
+        id: track.playlistId!,
+        title: track.title,
+        isCustom: false,
       );
       return;
     }
@@ -192,8 +196,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                               ),
                                             ),
                                           ),
-                                          if (!track
-                                              .isPlaylist) // ✅ only show for songs
+                                          if (!track.isPlaylist)
                                             GestureDetector(
                                               onTap: () {
                                                 showModalBottomSheet(

@@ -1,19 +1,24 @@
 import 'package:flutter/material.dart';
 import '../audora_music.dart';
 import '../audio_manager.dart';
+import '../data/custom_playlists.dart';
 
 class PlaylistScreen extends StatefulWidget {
-  final String playlistId;
+  final String id;
   final String title;
+  final bool isCustom;
+  final AudioManager audioManager;
   final AudoraSearch search;
-  final Future<void> Function(Track, {List<Track>? queue}) playTrack;
+  final VoidCallback onBack;
 
   const PlaylistScreen({
     super.key,
-    required this.playlistId,
+    required this.id,
     required this.title,
+    required this.isCustom,
+    required this.audioManager,
     required this.search,
-    required this.playTrack,
+    required this.onBack,
   });
 
   @override
@@ -21,8 +26,8 @@ class PlaylistScreen extends StatefulWidget {
 }
 
 class _PlaylistScreenState extends State<PlaylistScreen> {
-  List<Track> _tracks = [];
   bool _isLoading = true;
+  List<Track> _tracks = [];
 
   @override
   void initState() {
@@ -32,97 +37,111 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
   Future<void> _loadPlaylist() async {
     try {
-      final tracks = await widget.search.fetchPlaylist(widget.playlistId);
-      setState(() {
-        _tracks = tracks;
-        _isLoading = false;
-      });
+      if (widget.isCustom) {
+        final customTracks = CustomPlaylists.getTracks(widget.id);
+        setState(() {
+          _tracks = customTracks;
+          _isLoading = false;
+        });
+      } else {
+        final apiTracks = await widget.search.fetchPlaylist(widget.id);
+        setState(() {
+          _tracks = apiTracks;
+          _isLoading = false;
+        });
+      }
     } catch (e) {
       setState(() => _isLoading = false);
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text('Failed to load playlist: $e')));
+      ).showSnackBar(SnackBar(content: Text('Failed to load: $e')));
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      appBar: AppBar(
-        iconTheme: const IconThemeData(color: Colors.white),
-        backgroundColor: Colors.black,
-        title: Text(widget.title, style: TextStyle(color: Colors.white)),
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 300),
+      child: Container(
+        color: Colors.black,
+        key: ValueKey(widget.id),
+        child: SafeArea(
+          child: Column(
+            children: [
+              AppBar(
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white),
+                  onPressed: widget.onBack,
+                ),
+                backgroundColor: Colors.black,
+                title: Text(
+                  widget.title,
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              Expanded(
+                child: _isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : _tracks.isEmpty
+                    ? const Center(
+                        child: Text(
+                          "No tracks here yet",
+                          style: TextStyle(color: Colors.white54),
+                        ),
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(12),
+                        itemCount: _tracks.length,
+                        itemBuilder: (context, i) {
+                          final track = _tracks[i];
+                          return ListTile(
+                            onTap: () => widget.audioManager.playTrack(
+                              track,
+                              queue: _tracks,
+                            ),
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: track.thumbnail != null
+                                  ? Image.network(
+                                      track.thumbnail!,
+                                      width: 55,
+                                      height: 55,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Container(
+                                      width: 55,
+                                      height: 55,
+                                      color: Colors.white24,
+                                      child: const Icon(
+                                        Icons.music_note,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                            ),
+                            title: Text(
+                              track.title,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 16,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              track.artist,
+                              style: const TextStyle(
+                                color: Colors.white54,
+                                fontSize: 13,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+            ],
+          ),
+        ),
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : ListView.builder(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              itemCount: _tracks.length,
-              itemBuilder: (context, index) {
-                final track = _tracks[index];
-                return GestureDetector(
-                  onTap: () => widget.playTrack(track, queue: _tracks),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    child: Row(
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(8),
-                          child: track.thumbnail != null
-                              ? Image.network(
-                                  track.thumbnail!,
-                                  width: 55,
-                                  height: 55,
-                                  fit: BoxFit.cover,
-                                )
-                              : Container(
-                                  width: 55,
-                                  height: 55,
-                                  color: Colors.white.withAlpha(
-                                    (0.5 * 255).round(),
-                                  ),
-                                  child: const Icon(
-                                    Icons.music_note,
-                                    color: Colors.white54,
-                                    size: 30,
-                                  ),
-                                ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                track.title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 16,
-                                ),
-                              ),
-                              const SizedBox(height: 2),
-                              Text(
-                                track.artist,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: const TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 13,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
     );
   }
 }

@@ -5,7 +5,7 @@ import 'library_screen.dart';
 import '../audio_manager.dart';
 import '../audora_music.dart';
 import '../widgets/mini_player.dart';
-import 'custom_playlist_screen.dart';
+import 'playlist_screen.dart';
 import 'package:audio_service/audio_service.dart';
 
 class MainScreen extends StatefulWidget {
@@ -17,14 +17,15 @@ class MainScreen extends StatefulWidget {
 
 class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
+  bool _showPlaylist = false;
+  String? _playlistId;
+  String? _playlistTitle;
+  bool _isCustomPlaylist = false;
 
   late final AudoraClient _client;
   late final AudoraSearch _search;
   late final AudoraPlayer _player;
   late final AudioManager _audioManager;
-
-  bool _showPlaylist = false;
-  String? _selectedPlaylist;
 
   @override
   void initState() {
@@ -35,26 +36,33 @@ class _MainScreenState extends State<MainScreen> {
     _audioManager = AudioManager(_player);
   }
 
-  final List<IconData> _icons = [
-    Icons.home,
-    Icons.search,
-    Icons.library_music,
-    Icons.settings,
-  ];
+  void openPlaylist({
+    required String id,
+    required String title,
+    required bool isCustom,
+  }) {
+    setState(() {
+      _playlistId = id;
+      _playlistTitle = title;
+      _isCustomPlaylist = isCustom;
+      _showPlaylist = true;
+    });
+  }
+
+  void closePlaylist() => setState(() => _showPlaylist = false);
 
   @override
   Widget build(BuildContext context) {
-    final List<Widget> _screens = [
-      HomeScreen(search: _search, audioManager: _audioManager),
-      SearchScreen(audioManager: _audioManager),
+    final screens = [
+      HomeScreen(
+        search: _search,
+        audioManager: _audioManager,
+        openPlaylist: openPlaylist,
+      ),
+      SearchScreen(audioManager: _audioManager, openPlaylist: openPlaylist),
       LibraryScreen(
         playTrack: _audioManager.playTrack,
-        onOpenPlaylist: (playlistName) {
-          setState(() {
-            _selectedPlaylist = playlistName;
-            _showPlaylist = true;
-          });
-        },
+        openPlaylist: openPlaylist,
       ),
       const Center(
         child: Text("Settings", style: TextStyle(color: Colors.white)),
@@ -65,23 +73,20 @@ class _MainScreenState extends State<MainScreen> {
       backgroundColor: Colors.black,
       body: Stack(
         children: [
-          // Normal navigation stack
-          _screens[_currentIndex],
+          screens[_currentIndex],
 
-          // CustomPlaylistScreen overlay
-          if (_showPlaylist && _selectedPlaylist != null)
-            CustomPlaylistScreen(
-              playlistName: _selectedPlaylist!,
-              playTrack: _audioManager.playTrack,
-              onBack: () {
-                setState(() {
-                  _showPlaylist = false;
-                  _selectedPlaylist = null;
-                });
-              },
+          if (_showPlaylist)
+            Positioned.fill(
+              child: PlaylistScreen(
+                id: _playlistId!,
+                title: _playlistTitle!,
+                isCustom: _isCustomPlaylist,
+                audioManager: _audioManager,
+                search: _search,
+                onBack: closePlaylist,
+              ),
             ),
 
-          // Global MiniPlayer
           ValueListenableBuilder<MediaItem?>(
             valueListenable: _audioManager.currentTrackNotifier,
             builder: (context, currentTrack, _) {
@@ -102,41 +107,49 @@ class _MainScreenState extends State<MainScreen> {
           ),
         ],
       ),
-      bottomNavigationBar: !_showPlaylist
-          ? Container(
-              color: Colors.black,
-              padding: const EdgeInsets.symmetric(vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceAround,
-                children: List.generate(_icons.length, (index) {
-                  final isActive = index == _currentIndex;
-                  return GestureDetector(
-                    onTap: () => setState(() => _currentIndex = index),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(
-                          _icons[index],
-                          color: isActive ? Colors.white : Colors.white54,
-                          size: 28,
-                        ),
-                        const SizedBox(height: 4),
-                        AnimatedContainer(
-                          duration: const Duration(milliseconds: 250),
-                          width: 20,
-                          height: 3,
-                          decoration: BoxDecoration(
-                            color: isActive ? Colors.blue : Colors.transparent,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      ],
+
+      bottomNavigationBar: Container(
+        color: Colors.black,
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          children: List.generate(4, (index) {
+            final icons = [
+              Icons.home,
+              Icons.search,
+              Icons.library_music,
+              Icons.settings,
+            ];
+            final isActive = index == _currentIndex;
+            return GestureDetector(
+              onTap: () {
+                if (_showPlaylist) closePlaylist();
+                setState(() => _currentIndex = index);
+              },
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    icons[index],
+                    color: isActive ? Colors.white : Colors.white54,
+                    size: 28,
+                  ),
+                  const SizedBox(height: 4),
+                  AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    width: 20,
+                    height: 3,
+                    decoration: BoxDecoration(
+                      color: isActive ? Colors.blue : Colors.transparent,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                  );
-                }),
+                  ),
+                ],
               ),
-            )
-          : null, // hide bottom bar when viewing playlist
+            );
+          }),
+        ),
+      ),
     );
   }
 }

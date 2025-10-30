@@ -2,17 +2,23 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import '../audora_music.dart';
 import '../audio_manager.dart';
-import 'playlist_screen.dart';
 import '/data/recently_played.dart';
 
 class HomeScreen extends StatefulWidget {
   final AudoraSearch search;
   final AudioManager audioManager;
+  final void Function({
+    required String id,
+    required String title,
+    required bool isCustom,
+  })
+  openPlaylist;
 
   const HomeScreen({
     super.key,
     required this.search,
     required this.audioManager,
+    required this.openPlaylist,
   });
 
   @override
@@ -135,16 +141,10 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _handleTapTrack(Track track, {List<Track>? queue}) async {
     final isPlaylist = (track.isPlaylist == true);
     if (isPlaylist && track.playlistId?.isNotEmpty == true) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PlaylistScreen(
-            playlistId: track.playlistId!,
-            title: track.title,
-            search: widget.search,
-            playTrack: widget.audioManager.playTrack,
-          ),
-        ),
+      widget.openPlaylist(
+        id: track.playlistId!,
+        title: track.title,
+        isCustom: false,
       );
       return;
     }

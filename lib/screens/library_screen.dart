@@ -4,12 +4,17 @@ import 'package:audora/audora_music.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Future<void> Function(Track, {List<Track>? queue}) playTrack;
-  final void Function(String playlistName)? onOpenPlaylist;
+  final void Function({
+    required String id,
+    required String title,
+    required bool isCustom,
+  })
+  openPlaylist;
 
   const LibraryScreen({
     super.key,
     required this.playTrack,
-    this.onOpenPlaylist,
+    required this.openPlaylist,
   });
 
   @override
@@ -125,7 +130,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
                     onPressed: () => _deletePlaylist(name),
                   ),
                   onTap: () {
-                    widget.onOpenPlaylist?.call(name);
+                    widget.openPlaylist(id: name, isCustom: true, title: name);
                   },
                 );
               },
