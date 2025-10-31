@@ -43,14 +43,14 @@ If you’re new to open-source, check out this guide first:
 2. **Clone your fork locally**
 
    ```bash
-   git clone https://github.com/<your-username>/Audora.git
+   git clone https://github.com/<your-username>/Audora
    cd Audora
    ```
 
 3. **Add the upstream repo**
 
    ```bash
-   git remote add upstream https://github.com/darkruke/Audora.git
+   git remote add upstream https://github.com/dotflux/Audora
    ```
 
 4. **Install dependencies**
