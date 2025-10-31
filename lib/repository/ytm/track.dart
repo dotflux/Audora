@@ -3,6 +3,7 @@ class Track {
   final String artist;
   final String videoId;
   final String? thumbnail;
+  final int? durationSec;
 
   final String? playlistId;
   final bool isPlaylist;
@@ -12,6 +13,7 @@ class Track {
     required this.artist,
     required this.videoId,
     this.thumbnail,
+    this.durationSec,
     this.playlistId,
     this.isPlaylist = false,
   });
@@ -21,6 +23,7 @@ class Track {
     title: json['title'],
     artist: json['artist'],
     thumbnail: json['thumbnail'],
+    durationSec: json['durationSec'],
     isPlaylist: json['isPlaylist'],
     playlistId: json['playlistId'],
   );
@@ -30,6 +33,7 @@ class Track {
     'title': title,
     'artist': artist,
     'thumbnail': thumbnail,
+    'durationSec': durationSec,
     'isPlaylist': isPlaylist,
     'playlistId': playlistId,
   };

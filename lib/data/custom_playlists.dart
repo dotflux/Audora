@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:hive_flutter/hive_flutter.dart';
 import '../audora_music.dart';
 import 'dart:io';
@@ -15,6 +14,15 @@ class CustomPlaylists {
 
   static List<String> getPlaylistNames() {
     return _box.keys.cast<String>().toList();
+  }
+
+  static int getTrackCount(String playlistName) {
+    if (!_box.containsKey(playlistName)) return 0;
+    final raw = _box.get(playlistName);
+    if (raw == null) return 0;
+    final data = Map<String, dynamic>.from(raw);
+    final tracks = data['tracks'] as List?;
+    return tracks?.length ?? 0;
   }
 
   static Future<bool> createPlaylist(String name, {String? coverPath}) async {
@@ -123,4 +131,11 @@ class CustomPlaylists {
   }
 
   static Future<void> clearAll() async => await _box.clear();
+
+  static Future<void> setTracks(String playlistName, List<Track> tracks) async {
+    if (!_box.containsKey(playlistName)) return;
+    final data = Map<String, dynamic>.from(_box.get(playlistName));
+    data['tracks'] = tracks.map((t) => t.toJson()).toList();
+    await _box.put(playlistName, data);
+  }
 }

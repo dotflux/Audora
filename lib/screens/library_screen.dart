@@ -3,10 +3,13 @@ import '../data/custom_playlists.dart';
 import 'package:audora/audora_music.dart';
 import 'dart:io';
 import '../widgets/default_playlist_art.dart';
+import '../repository/spotify/spotify_api.dart';
+import '../repository/spotify/spotify_import.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Future<void> Function(Track, {List<Track>? queue}) playTrack;
-  final void Function({
+  final Future<void> Function({
     required String id,
     required String title,
     required bool isCustom,
@@ -30,6 +33,129 @@ class _LibraryScreenState extends State<LibraryScreen> {
   void initState() {
     super.initState();
     _loadPlaylists();
+  }
+
+  Future<void> _importSpotify() async {
+    final controller = TextEditingController();
+
+    final url = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black,
+        title: const Text(
+          "Import from Spotify",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: "Paste playlist URL",
+            hintStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Cancel",
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text("Import", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (url == null || url.isEmpty) return;
+
+    final api = SpotifyApi();
+    final importer = SpotifyImporter(api: api, ytmClient: AudoraClient());
+    final id = importer.extractPlaylistId(url);
+    if (id == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid Spotify playlist URL')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Import started...')));
+    }
+
+    int done = 0;
+    int total = 0;
+    late void Function(void Function()) setProgress;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            setProgress = setState;
+            final progress = total > 0 ? done / total : null;
+            return AlertDialog(
+              backgroundColor: Colors.black,
+              title: const Text(
+                'Importing...',
+                style: TextStyle(color: Colors.white),
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  LinearProgressIndicator(
+                    value: progress,
+                    color: Colors.greenAccent,
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    total == 0 ? 'Preparing...' : 'Imported $done of $total',
+                    style: const TextStyle(color: Colors.white70),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    try {
+      await importer.importPlaylist(
+        id,
+        onProgress: (d, t) {
+          done = d;
+          total = t;
+          setProgress(() {});
+        },
+      );
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _loadPlaylists();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Import completed')));
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
   }
 
   void _loadPlaylists() {
@@ -89,17 +215,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadPlaylists();
   }
 
-  Future<void> _deletePlaylist(String name) async {
-    await CustomPlaylists.deletePlaylist(name);
-    _loadPlaylists();
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.black.withOpacity(0.86),
+        backgroundColor: Colors.black,
         elevation: 0,
         titleSpacing: 10,
         title: Row(
@@ -120,6 +241,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
         actions: [
           IconButton(
+            onPressed: _importSpotify,
+            icon: SvgPicture.asset("assets/icon/spotify.svg"),
+            tooltip: "Import Spotify playlist",
+          ),
+          IconButton(
             onPressed: _createPlaylist,
             icon: const Icon(Icons.add, color: Colors.white),
             tooltip: "Create playlist",
@@ -138,10 +264,10 @@ class _LibraryScreenState extends State<LibraryScreen> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 100),
               child: ListView.separated(
                 itemCount: _playlists.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 8),
+                separatorBuilder: (_, __) => const SizedBox(height: 4),
                 itemBuilder: (context, index) {
                   final name = _playlists[index];
-                  final trackCount = CustomPlaylists.getTracks(name).length;
+                  final trackCount = CustomPlaylists.getTrackCount(name);
                   final cover = CustomPlaylists.getCoverImage(name);
                   final coverFile = cover != null ? File(cover) : null;
 
@@ -149,44 +275,47 @@ class _LibraryScreenState extends State<LibraryScreen> {
                       (coverFile != null && coverFile.existsSync())
                       ? Image.file(
                           coverFile,
-                          height: 70,
-                          width: 70,
+                          height: 90,
+                          width: 90,
                           fit: BoxFit.cover,
                         )
-                      : DefaultPlaylistArt(title: name, size: 70);
+                      : DefaultPlaylistArt(title: name, size: 90);
 
                   return InkWell(
                     borderRadius: BorderRadius.circular(18),
-                    onTap: () => widget.openPlaylist(
-                      id: name,
-                      title: name,
-                      isCustom: true,
-                    ),
+                    onTap: () async {
+                      await widget.openPlaylist(
+                        id: name,
+                        title: name,
+                        isCustom: true,
+                      );
+                      if (mounted) _loadPlaylists();
+                    },
                     child: Container(
-                      height: 110,
+                      height: 130,
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(18),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.5),
-                            blurRadius: 10,
-                            offset: const Offset(0, 4),
+                            color: Colors.black.withOpacity(0.6),
+                            blurRadius: 14,
+                            offset: const Offset(0, 6),
                           ),
                         ],
                       ),
                       child: Container(
                         decoration: BoxDecoration(
                           borderRadius: BorderRadius.circular(18),
-                          color: Colors.black.withOpacity(0.4),
+                          color: Colors.black.withOpacity(0.45),
                         ),
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        padding: const EdgeInsets.symmetric(horizontal: 18),
                         child: Row(
                           children: [
                             ClipRRect(
                               borderRadius: BorderRadius.circular(12),
                               child: coverImage,
                             ),
-                            const SizedBox(width: 14),
+                            const SizedBox(width: 16),
                             Expanded(
                               child: Column(
                                 mainAxisAlignment: MainAxisAlignment.center,
@@ -196,8 +325,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                     name,
                                     style: const TextStyle(
                                       color: Colors.white,
-                                      fontSize: 17,
-                                      fontWeight: FontWeight.bold,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.w800,
+                                      letterSpacing: 0.2,
                                     ),
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -206,18 +336,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
                                     "$trackCount tracks",
                                     style: const TextStyle(
                                       color: Colors.white70,
-                                      fontSize: 13,
+                                      fontSize: 15,
                                     ),
                                   ),
                                 ],
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Colors.white70,
-                              ),
-                              onPressed: () => _deletePlaylist(name),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white38,
+                              size: 26,
                             ),
                           ],
                         ),

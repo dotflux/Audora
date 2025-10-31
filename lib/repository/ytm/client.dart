@@ -112,4 +112,110 @@ class AudoraClient {
 
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
+
+  int _parseDurationToSeconds(String s) {
+    final parts = s.split(':').map((e) => e.trim()).toList();
+    if (parts.length == 3) {
+      return int.parse(parts[0]) * 3600 +
+          int.parse(parts[1]) * 60 +
+          int.parse(parts[2]);
+    } else if (parts.length == 2) {
+      return int.parse(parts[0]) * 60 + int.parse(parts[1]);
+    }
+    return 0;
+  }
+
+  Future<List<Map<String, dynamic>>> ytSearchRaw(String query) async {
+    try {
+      final uri = Uri.parse(
+        'https://www.youtube.com/results?search_query=' +
+            Uri.encodeComponent(query),
+      );
+      final res = await http
+          .get(
+            uri,
+            headers: {
+              'User-Agent':
+                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36',
+              'Accept-Language': 'en-US,en;q=0.9',
+            },
+          )
+          .timeout(const Duration(seconds: 25));
+      if (res.statusCode != 200) return [];
+      final body = res.body;
+      final m =
+          RegExp(r'var ytInitialData = (\{[\s\S]*?\});').firstMatch(body) ??
+          RegExp(r'"ytInitialData":(\{[\s\S]*?\})[,<]').firstMatch(body);
+      if (m == null) return [];
+      var jsonStr = m.group(1)!;
+      if (jsonStr.endsWith(';')) {
+        jsonStr = jsonStr.substring(0, jsonStr.length - 1);
+      }
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(jsonStr) as Map<String, dynamic>;
+      } catch (_) {
+        return [];
+      }
+
+      final List<Map<String, dynamic>> out = [];
+      try {
+        final contents =
+            (((data['contents'] as Map)['twoColumnSearchResultsRenderer']
+                        as Map)['primaryContents']
+                    as Map)['sectionListRenderer']
+                as Map;
+        final sections = (contents['contents'] as List).cast<Map>();
+        for (final sec in sections) {
+          final items =
+              (((sec['itemSectionRenderer'] ?? {}) as Map)['contents'] ?? [])
+                  as List;
+          for (final it in items) {
+            final v = it['videoRenderer'] as Map?;
+            if (v == null) continue;
+            final videoId = v['videoId'] as String?;
+            if (videoId == null) continue;
+            final titleRuns =
+                (((v['title'] ?? {}) as Map)['runs'] ?? []) as List;
+            final title = titleRuns.isNotEmpty
+                ? (titleRuns.first['text'] as String? ?? '')
+                : '';
+            final lengthText =
+                ((v['lengthText'] ?? {}) as Map)['simpleText'] as String?;
+            final channelRuns =
+                ((((v['ownerText'] ?? {}) as Map)['runs'] ?? []) as List);
+            final channel = channelRuns.isNotEmpty
+                ? (channelRuns.first['text'] as String? ?? '')
+                : '';
+            final durSec = lengthText != null
+                ? _parseDurationToSeconds(lengthText)
+                : 0;
+            String? thumb;
+            try {
+              final thumbs =
+                  (((v['thumbnail'] ?? {}) as Map)['thumbnails'] ?? []) as List;
+              if (thumbs.isNotEmpty) {
+                final best = (thumbs as List).cast<Map>().reduce((a, b) {
+                  final aw = (a['width'] as int?) ?? 0;
+                  final bw = (b['width'] as int?) ?? 0;
+                  return bw > aw ? b : a;
+                });
+                thumb = best['url'] as String?;
+              }
+            } catch (_) {}
+            out.add({
+              'id': videoId,
+              'title': title,
+              'channel': channel,
+              'duration': durSec,
+              'thumb': thumb,
+            });
+          }
+        }
+      } catch (_) {}
+      return out;
+    } catch (_) {
+      return [];
+    }
+  }
 }

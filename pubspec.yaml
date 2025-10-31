@@ -56,11 +56,13 @@ dependencies:
   audio_visualizer: ^1.1.0
   image_picker: ^1.2.0
   just_audio_background: ^0.0.1-beta.17
+  flutter_svg: ^2.2.1
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_launcher_icons: ^0.10.0
+  flutter_launcher_icons: ^0.14.4
+  flutter_native_splash: ^2.4.7
   hive_generator: ^2.0.1
 
   # The "flutter_lints" package below contains a set of recommended lints to
@@ -128,3 +130,12 @@ flutter_icons:
   android: true
   ios: true
   image_path: "assets/icon/AudoraNoText.png"
+  adaptive_icon_background: "#000000"
+  adaptive_icon_foreground: "assets/icon/AudoraNoText.png"
+
+flutter_native_splash:
+  color: "#000000"
+  image: assets/icon/AudoraSplashNoText.png
+  android_12:
+    image: assets/icon/AudoraSplashNoText.png
+    icon_background_color: "#000000"

@@ -32,6 +32,11 @@ class PlaylistScreen extends StatefulWidget {
 class _PlaylistScreenState extends State<PlaylistScreen> {
   bool _isLoading = true;
   List<Track> _tracks = [];
+  List<Track> _allTracks = [];
+  int _loadedCount = 0;
+  bool _isLoadingMore = false;
+  int _totalCount = 0;
+  int _totalDurationSec = 0;
 
   @override
   void initState() {
@@ -39,18 +44,37 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     _loadPlaylist();
   }
 
+  String _formatDuration(int totalSec) {
+    if (totalSec <= 0) return '—';
+    final hours = totalSec ~/ 3600;
+    final minutes = (totalSec % 3600) ~/ 60;
+    final seconds = totalSec % 60;
+    if (hours > 0) {
+      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+    }
+    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
+  }
+
   Future<void> _loadPlaylist() async {
     try {
       if (widget.isCustom) {
         final customTracks = CustomPlaylists.getTracks(widget.id);
         setState(() {
-          _tracks = customTracks;
+          _allTracks = customTracks;
+          _loadedCount = customTracks.length > 20 ? 20 : customTracks.length;
+          _tracks = _allTracks.take(_loadedCount).toList();
+          _totalCount = CustomPlaylists.getTrackCount(widget.id);
+          _totalDurationSec = _allTracks
+              .map((t) => t.durationSec ?? 0)
+              .fold(0, (a, b) => a + b);
           _isLoading = false;
         });
       } else {
         final apiTracks = await widget.search.fetchPlaylist(widget.id);
         setState(() {
           _tracks = apiTracks;
+          _totalCount = _tracks.length;
+          _totalDurationSec = 0;
           _isLoading = false;
         });
       }
@@ -60,6 +84,23 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         context,
       ).showSnackBar(SnackBar(content: Text('Failed to load: $e')));
     }
+  }
+
+  Future<void> _loadMoreIfNeeded(ScrollNotification n) async {
+    if (!widget.isCustom) return;
+    if (_isLoadingMore) return;
+    if (_tracks.length >= _allTracks.length) return;
+    if (n.metrics.pixels < n.metrics.maxScrollExtent - 200) return;
+    setState(() => _isLoadingMore = true);
+    await Future.delayed(const Duration(milliseconds: 100));
+    final add = (_allTracks.length - _loadedCount) >= 20
+        ? 20
+        : (_allTracks.length - _loadedCount);
+    setState(() {
+      _loadedCount += add;
+      _tracks = _allTracks.take(_loadedCount).toList();
+      _isLoadingMore = false;
+    });
   }
 
   void _openPlaylistOptions() async {
@@ -85,6 +126,18 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                   await _editPlaylist();
                 },
               ),
+              if (widget.isCustom)
+                ListTile(
+                  leading: const Icon(Icons.swap_vert, color: Colors.white),
+                  title: const Text(
+                    "Reorder",
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await _openReorder();
+                  },
+                ),
               ListTile(
                 leading: const Icon(
                   Icons.delete_outline,
@@ -188,16 +241,147 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     );
   }
 
-  Future<void> _reorderTracks(int oldIndex, int newIndex) async {
-    if (newIndex > oldIndex) newIndex -= 1;
-
-    setState(() {
-      final track = _tracks.removeAt(oldIndex);
-      _tracks.insert(newIndex, track);
-    });
-
-    await CustomPlaylists.reorderTracks(widget.id, oldIndex, newIndex);
-    widget.audioManager.updateQueue(List.from(_tracks));
+  Future<void> _openReorder() async {
+    final all = List<Track>.from(
+      _allTracks.isNotEmpty ? _allTracks : CustomPlaylists.getTracks(widget.id),
+    );
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) {
+        List<Track> local = List.of(all);
+        return StatefulBuilder(
+          builder: (context, localSetState) {
+            return AlertDialog(
+              backgroundColor: Colors.black,
+              contentPadding: const EdgeInsets.all(0),
+              content: SizedBox(
+                width: MediaQuery.of(context).size.width * 0.9,
+                height: MediaQuery.of(context).size.height * 0.8,
+                child: Column(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          const Text(
+                            'Reorder tracks',
+                            style: TextStyle(color: Colors.white, fontSize: 16),
+                          ),
+                          Row(
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(color: Colors.white70),
+                                ),
+                              ),
+                              TextButton(
+                                onPressed: () async {
+                                  await CustomPlaylists.setTracks(
+                                    widget.id,
+                                    local,
+                                  );
+                                  if (mounted) {
+                                    _allTracks = local;
+                                    _tracks = _allTracks
+                                        .take(_loadedCount)
+                                        .toList();
+                                    setState(() {});
+                                  }
+                                  if (context.mounted) Navigator.pop(context);
+                                },
+                                child: const Text(
+                                  'Save',
+                                  style: TextStyle(color: Colors.greenAccent),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const Divider(height: 1, color: Colors.white12),
+                    Expanded(
+                      child: ReorderableListView.builder(
+                        padding: const EdgeInsets.only(top: 8, bottom: 12),
+                        itemCount: local.length,
+                        proxyDecorator: (child, index, animation) {
+                          return Material(
+                            color: const Color(0xFF121212),
+                            elevation: 8,
+                            borderRadius: BorderRadius.circular(8),
+                            child: child,
+                          );
+                        },
+                        onReorder: (oldIndex, newIndex) {
+                          if (newIndex > oldIndex) newIndex -= 1;
+                          final item = local.removeAt(oldIndex);
+                          local.insert(newIndex, item);
+                          localSetState(() {});
+                          if (mounted) {
+                            this.setState(() {
+                              _allTracks = local;
+                              _tracks = _allTracks.take(_loadedCount).toList();
+                            });
+                          }
+                        },
+                        itemBuilder: (context, i) {
+                          final track = local[i];
+                          return ListTile(
+                            key: ValueKey(track.videoId),
+                            leading: ClipRRect(
+                              borderRadius: BorderRadius.circular(8),
+                              child: track.thumbnail != null
+                                  ? Image.network(
+                                      track.thumbnail!,
+                                      width: 48,
+                                      height: 48,
+                                      fit: BoxFit.cover,
+                                    )
+                                  : Container(
+                                      width: 48,
+                                      height: 48,
+                                      color: Colors.white24,
+                                      child: const Icon(
+                                        Icons.music_note,
+                                        color: Colors.white54,
+                                      ),
+                                    ),
+                            ),
+                            title: Text(
+                              track.title,
+                              style: const TextStyle(color: Colors.white),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            subtitle: Text(
+                              track.artist,
+                              style: const TextStyle(color: Colors.white54),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: const Icon(
+                              Icons.drag_handle_rounded,
+                              color: Colors.white38,
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   Future<void> _removeTrack(String videoId) async {
@@ -221,316 +405,232 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           ? const Center(child: CircularProgressIndicator(color: Colors.white))
           : Stack(
               children: [
-                CustomScrollView(
-                  physics: const BouncingScrollPhysics(),
-                  slivers: [
-                    SliverAppBar(
-                      backgroundColor: Colors.transparent,
-                      elevation: 0,
-                      pinned: true,
-                      leading: IconButton(
-                        icon: const Icon(Icons.arrow_back, color: Colors.white),
-                        onPressed: widget.onBack,
-                      ),
-                      expandedHeight: 300,
-                      flexibleSpace: FlexibleSpaceBar(
-                        background: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            topWidget,
-                            Container(
-                              decoration: BoxDecoration(
-                                gradient: LinearGradient(
-                                  begin: Alignment.topCenter,
-                                  end: Alignment.bottomCenter,
-                                  colors: [
-                                    Colors.transparent,
-                                    Colors.black.withOpacity(0.9),
+                NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    _loadMoreIfNeeded(n);
+                    return false;
+                  },
+                  child: CustomScrollView(
+                    physics: const BouncingScrollPhysics(),
+                    slivers: [
+                      SliverAppBar(
+                        backgroundColor: Colors.transparent,
+                        elevation: 0,
+                        pinned: true,
+                        leading: IconButton(
+                          icon: const Icon(
+                            Icons.arrow_back,
+                            color: Colors.white,
+                          ),
+                          onPressed: widget.onBack,
+                        ),
+                        expandedHeight: 300,
+                        flexibleSpace: FlexibleSpaceBar(
+                          background: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              topWidget,
+                              Container(
+                                decoration: BoxDecoration(
+                                  gradient: LinearGradient(
+                                    begin: Alignment.topCenter,
+                                    end: Alignment.bottomCenter,
+                                    colors: [
+                                      Colors.transparent,
+                                      Colors.black.withOpacity(0.9),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              if (_tracks.isEmpty)
+                                Center(
+                                  child: Image.asset(
+                                    'assets/icon/Quaver.png',
+                                    width: 120,
+                                    height: 120,
+                                    color: Colors.transparent,
+                                  ),
+                                ),
+                              Positioned(
+                                left: 20,
+                                bottom: 45,
+                                right: 20,
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      widget.title,
+                                      style: const TextStyle(
+                                        fontSize: 26,
+                                        fontWeight: FontWeight.bold,
+                                        color: Colors.white,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 6),
+                                    Text(
+                                      '${widget.isCustom ? _totalCount : _tracks.length} tracks',
+                                      style: const TextStyle(
+                                        color: Colors.white70,
+                                        fontSize: 14,
+                                      ),
+                                    ),
                                   ],
                                 ),
                               ),
-                            ),
-                            if (_tracks.isEmpty)
-                              Center(
-                                child: Image.asset(
-                                  'assets/icon/Quaver.png',
-                                  width: 120,
-                                  height: 120,
-                                  color: Colors.transparent,
-                                ),
-                              ),
-                            Positioned(
-                              left: 20,
-                              bottom: 45,
-                              right: 20,
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    widget.title,
-                                    style: const TextStyle(
-                                      fontSize: 26,
-                                      fontWeight: FontWeight.bold,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Text(
-                                    '${_tracks.length} tracks',
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 14,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 10,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Playlist • ${_tracks.length} tracks",
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 15,
-                              ),
-                            ),
-                            Row(
-                              children: [
-                                IconButton(
-                                  icon: const Icon(
-                                    Icons.play_circle_fill,
-                                    color: Colors.white,
-                                    size: 36,
-                                  ),
-                                  onPressed: _tracks.isNotEmpty
-                                      ? () => widget.audioManager.playTrack(
-                                          _tracks[0],
-                                          queue: _tracks,
-                                        )
-                                      : null,
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 10,
+                          ),
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Playlist • ${widget.isCustom ? _totalCount : _tracks.length} tracks",
+                                style: const TextStyle(
+                                  color: Colors.white70,
+                                  fontSize: 15,
                                 ),
-                                if (widget.isCustom)
+                              ),
+                              Row(
+                                children: [
                                   IconButton(
                                     icon: const Icon(
-                                      Icons.more_vert,
-                                      color: Colors.white70,
+                                      Icons.play_circle_fill,
+                                      color: Colors.white,
+                                      size: 36,
                                     ),
-                                    onPressed: _openPlaylistOptions,
+                                    onPressed: _tracks.isNotEmpty
+                                        ? () => widget.audioManager.playTrack(
+                                            _tracks[0],
+                                            queue: _tracks,
+                                          )
+                                        : null,
                                   ),
-                              ],
-                            ),
-                          ],
+                                  if (widget.isCustom)
+                                    IconButton(
+                                      icon: const Icon(
+                                        Icons.more_vert,
+                                        color: Colors.white70,
+                                      ),
+                                      onPressed: _openPlaylistOptions,
+                                    ),
+                                ],
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
 
-                    _tracks.isEmpty
-                        ? const SliverFillRemaining(
-                            hasScrollBody: false,
-                            child: Center(
-                              child: Text(
-                                "No tracks here yet",
-                                style: TextStyle(
-                                  color: Colors.white54,
-                                  fontSize: 16,
+                      _tracks.isEmpty
+                          ? const SliverFillRemaining(
+                              hasScrollBody: false,
+                              child: Center(
+                                child: Text(
+                                  "No tracks here yet",
+                                  style: TextStyle(
+                                    color: Colors.white54,
+                                    fontSize: 16,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : SliverToBoxAdapter(
+                              child: Padding(
+                                padding: const EdgeInsets.only(bottom: 100),
+                                child: ListView.builder(
+                                  shrinkWrap: true,
+                                  physics: const NeverScrollableScrollPhysics(),
+                                  itemCount: _tracks.length,
+                                  itemBuilder: (context, i) {
+                                    final track = _tracks[i];
+                                    return ListTile(
+                                      onTap: () => widget.audioManager
+                                          .playTrack(track, queue: _tracks),
+                                      leading: ClipRRect(
+                                        borderRadius: BorderRadius.circular(8),
+                                        child: track.thumbnail != null
+                                            ? Image.network(
+                                                track.thumbnail!,
+                                                width: 55,
+                                                height: 55,
+                                                fit: BoxFit.cover,
+                                              )
+                                            : Container(
+                                                width: 55,
+                                                height: 55,
+                                                color: Colors.white24,
+                                                child: const Icon(
+                                                  Icons.music_note,
+                                                  color: Colors.white54,
+                                                ),
+                                              ),
+                                      ),
+                                      title: Text(
+                                        track.title,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 16,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                      subtitle: Text(
+                                        track.artist,
+                                        style: const TextStyle(
+                                          color: Colors.white54,
+                                          fontSize: 13,
+                                        ),
+                                      ),
+                                      trailing: widget.isCustom
+                                          ? IconButton(
+                                              icon: const Icon(
+                                                Icons.delete_outline,
+                                                color: Colors.redAccent,
+                                              ),
+                                              onPressed: () =>
+                                                  _removeTrack(track.videoId),
+                                            )
+                                          : IconButton(
+                                              icon: const Icon(
+                                                Icons.playlist_add,
+                                                color: Colors.white70,
+                                              ),
+                                              onPressed: () {
+                                                showModalBottomSheet(
+                                                  context: context,
+                                                  isScrollControlled: true,
+                                                  backgroundColor: const Color(
+                                                    0xFF181818,
+                                                  ),
+                                                  shape: const RoundedRectangleBorder(
+                                                    borderRadius:
+                                                        BorderRadius.vertical(
+                                                          top: Radius.circular(
+                                                            20,
+                                                          ),
+                                                        ),
+                                                  ),
+                                                  builder: (_) =>
+                                                      AddToPlaylistDialog(
+                                                        track: track,
+                                                      ),
+                                                );
+                                              },
+                                            ),
+                                    );
+                                  },
                                 ),
                               ),
                             ),
-                          )
-                        : SliverToBoxAdapter(
-                            child: Padding(
-                              padding: const EdgeInsets.only(bottom: 100),
-                              child: widget.isCustom
-                                  ? ReorderableListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      onReorder: _reorderTracks,
-                                      itemCount: _tracks.length,
-                                      proxyDecorator:
-                                          (child, index, animation) {
-                                            return Material(
-                                              color: Colors.black,
-                                              elevation: 8,
-                                              shadowColor: Colors.black54,
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: child,
-                                            );
-                                          },
-                                      itemBuilder: (context, i) {
-                                        final track = _tracks[i];
-                                        return Container(
-                                          key: ValueKey(track.videoId),
-                                          color: Colors.transparent,
-                                          child: ListTile(
-                                            onTap: () =>
-                                                widget.audioManager.playTrack(
-                                                  track,
-                                                  queue: _tracks,
-                                                ),
-                                            leading: ClipRRect(
-                                              borderRadius:
-                                                  BorderRadius.circular(8),
-                                              child: track.thumbnail != null
-                                                  ? Image.network(
-                                                      track.thumbnail!,
-                                                      width: 55,
-                                                      height: 55,
-                                                      fit: BoxFit.cover,
-                                                    )
-                                                  : Container(
-                                                      width: 55,
-                                                      height: 55,
-                                                      color: Colors.white24,
-                                                      child: const Icon(
-                                                        Icons.music_note,
-                                                        color: Colors.white54,
-                                                      ),
-                                                    ),
-                                            ),
-                                            title: Text(
-                                              track.title,
-                                              style: const TextStyle(
-                                                color: Colors.white,
-                                                fontSize: 16,
-                                              ),
-                                              maxLines: 1,
-                                              overflow: TextOverflow.ellipsis,
-                                            ),
-                                            subtitle: Text(
-                                              track.artist,
-                                              style: const TextStyle(
-                                                color: Colors.white54,
-                                                fontSize: 13,
-                                              ),
-                                            ),
-                                            trailing: Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                IconButton(
-                                                  icon: const Icon(
-                                                    Icons.delete_outline,
-                                                    color: Colors.redAccent,
-                                                  ),
-                                                  onPressed: () => _removeTrack(
-                                                    track.videoId,
-                                                  ),
-                                                ),
-
-                                                ReorderableDragStartListener(
-                                                  index: i,
-                                                  child: const Padding(
-                                                    padding:
-                                                        EdgeInsets.symmetric(
-                                                          horizontal: 6.0,
-                                                        ),
-                                                    child: Icon(
-                                                      Icons.drag_handle_rounded,
-                                                      color: Colors.white38,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    )
-                                  : ListView.builder(
-                                      shrinkWrap: true,
-                                      physics:
-                                          const NeverScrollableScrollPhysics(),
-                                      itemCount: _tracks.length,
-                                      itemBuilder: (context, i) {
-                                        final track = _tracks[i];
-                                        return ListTile(
-                                          onTap: () => widget.audioManager
-                                              .playTrack(track, queue: _tracks),
-                                          leading: ClipRRect(
-                                            borderRadius: BorderRadius.circular(
-                                              8,
-                                            ),
-                                            child: track.thumbnail != null
-                                                ? Image.network(
-                                                    track.thumbnail!,
-                                                    width: 55,
-                                                    height: 55,
-                                                    fit: BoxFit.cover,
-                                                  )
-                                                : Container(
-                                                    width: 55,
-                                                    height: 55,
-                                                    color: Colors.white24,
-                                                    child: const Icon(
-                                                      Icons.music_note,
-                                                      color: Colors.white54,
-                                                    ),
-                                                  ),
-                                          ),
-                                          title: Text(
-                                            track.title,
-                                            style: const TextStyle(
-                                              color: Colors.white,
-                                              fontSize: 16,
-                                            ),
-                                            maxLines: 1,
-                                            overflow: TextOverflow.ellipsis,
-                                          ),
-                                          subtitle: Text(
-                                            track.artist,
-                                            style: const TextStyle(
-                                              color: Colors.white54,
-                                              fontSize: 13,
-                                            ),
-                                          ),
-                                          trailing: IconButton(
-                                            icon: const Icon(
-                                              Icons.playlist_add,
-                                              color: Colors.white70,
-                                            ),
-                                            onPressed: () {
-                                              showModalBottomSheet(
-                                                context: context,
-                                                isScrollControlled: true,
-                                                backgroundColor: const Color(
-                                                  0xFF181818,
-                                                ),
-                                                shape:
-                                                    const RoundedRectangleBorder(
-                                                      borderRadius:
-                                                          BorderRadius.vertical(
-                                                            top:
-                                                                Radius.circular(
-                                                                  20,
-                                                                ),
-                                                          ),
-                                                    ),
-                                                builder: (_) =>
-                                                    AddToPlaylistDialog(
-                                                      track: track,
-                                                    ),
-                                              );
-                                            },
-                                          ),
-                                        );
-                                      },
-                                    ),
-                            ),
-                          ),
-                  ],
+                    ],
+                  ),
                 ),
               ],
             ),

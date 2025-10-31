@@ -36,11 +36,11 @@ class _MainScreenState extends State<MainScreen> {
     _audioManager = AudioManager(_player);
   }
 
-  void openPlaylist({
+  Future<void> openPlaylist({
     required String id,
     required String title,
     required bool isCustom,
-  }) {
+  }) async {
     setState(() {
       _playlistId = id;
       _playlistTitle = title;
