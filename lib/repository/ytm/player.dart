@@ -7,6 +7,7 @@ import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'package:youtube_explode_dart/youtube_explode_dart.dart';
+import '../../utils/log.dart';
 
 class AudoraPlayer {
   final AudoraClient client;
@@ -58,7 +59,7 @@ class AudoraPlayer {
           .timeout(const Duration(seconds: 60));
 
       if (response.statusCode != 200) {
-        print(
+        log.d(
           '[ERROR] Node proxy returned status ${response.statusCode} for $videoId',
         );
         return null;
@@ -67,8 +68,8 @@ class AudoraPlayer {
       final data = jsonDecode(response.body);
       return data;
     } catch (e, st) {
-      print('[ERROR] Failed to fetch audio from Node server: $e');
-      print(st);
+      log.d('[ERROR] Failed to fetch audio from Node server: $e');
+      log.d(st);
       return null;
     }
   }
@@ -85,8 +86,8 @@ class AudoraPlayer {
       final best = audioOnly.sortByBitrate().last;
       return best.url.toString();
     } catch (e, st) {
-      print('[ERROR] youtube_explode_dart failed for $videoId: $e');
-      print(st);
+      log.d('[ERROR] youtube_explode_dart failed for $videoId: $e');
+      log.d(st);
       return null;
     }
   }

@@ -5,6 +5,7 @@ import '../audora_music.dart';
 import './utils/log.dart';
 import 'dart:async';
 import '/data/recently_played.dart';
+import 'utils/log.dart';
 
 class AudioManager {
   final AudoraPlayer player;
@@ -86,8 +87,8 @@ class AudioManager {
 
       unawaited(RecentlyPlayed.addTrack(track));
     } catch (e, st) {
-      print('[ERROR] Playback failed: $e');
-      print(st);
+      log.d('[ERROR] Playback failed: $e');
+      log.d(st);
     } finally {
       if (_currentPlayingVideoId == requestedVideoId) {
         isFetchingNotifier.value = false;

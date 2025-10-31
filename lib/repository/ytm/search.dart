@@ -3,6 +3,7 @@ import 'track.dart';
 import 'params.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import '../../utils/log.dart';
 
 class AudoraSearch {
   final AudoraClient client;
@@ -26,7 +27,7 @@ class AudoraSearch {
     final tabs =
         res['contents']?['tabbedSearchResultsRenderer']?['tabs'] as List?;
     if (tabs == null || tabs.isEmpty) {
-      print('No tabs found in response');
+      log.d('No tabs found in response');
       return [];
     }
 
@@ -34,7 +35,7 @@ class AudoraSearch {
         tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents']
             as List?;
     if (sections == null) {
-      print('No sections found in first tab');
+      log.d('No sections found in first tab');
       return [];
     }
 
@@ -174,7 +175,7 @@ class AudoraSearch {
               continue;
             }
           } catch (e) {
-            print('Playlist probe failed for $playlistId: $e');
+            log.d('Playlist probe failed for $playlistId: $e');
             continue;
           }
         }
@@ -303,7 +304,7 @@ class AudoraSearch {
       );
 
       if (res.statusCode != 200) {
-        print('Playlist page HTTP ${res.statusCode}');
+        log.d('Playlist page HTTP ${res.statusCode}');
         return tracks;
       }
 
@@ -317,7 +318,7 @@ class AudoraSearch {
       RegExpMatch? m = reg1.firstMatch(body) ?? reg2.firstMatch(body);
 
       if (m == null) {
-        print(
+        log.d(
           'Could not find ytInitialData in playlist HTML. YouTube changed layout?',
         );
 
@@ -329,8 +330,8 @@ class AudoraSearch {
 
       _collectFromNode(data);
     } catch (e, st) {
-      print('Failed to parse playlist HTML: $e');
-      print(st);
+      log.d('Failed to parse playlist HTML: $e');
+      log.d(st);
       return tracks;
     }
 
@@ -347,8 +348,8 @@ class AudoraSearch {
 
         _collectFromNode(contRes);
       } catch (e, st) {
-        print('Continuation fetch failed: $e');
-        print(st);
+        log.d('Continuation fetch failed: $e');
+        log.d(st);
         break;
       }
     }
@@ -368,12 +369,12 @@ class AudoraSearch {
 
   Future<List<Track>> fetchGenreSongs(String genre, {int limit = 20}) async {
     final query = '$genre songs';
-    print('🎧 fetching genre chart for "$query"...');
+    log.d('🎧 fetching genre chart for "$query"...');
     try {
       final tracks = await search(query, filter: Params.songs, limit: limit);
       return tracks;
     } catch (e) {
-      print('⚠️ failed to fetch genre chart for $genre: $e');
+      log.d('⚠️ failed to fetch genre chart for $genre: $e');
       return [];
     }
   }

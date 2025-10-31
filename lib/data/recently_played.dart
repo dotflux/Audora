@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../audora_music.dart';
+import '../utils/log.dart';
 
 class RecentlyPlayed {
   static const _storageKey = 'recentlyPlayed';
@@ -23,7 +24,7 @@ class RecentlyPlayed {
           ..clear()
           ..addAll(jsonList.map((e) => Track.fromJson(e)));
       } catch (e) {
-        print('[RecentlyPlayed] Failed to decode: $e');
+        log.d('[RecentlyPlayed] Failed to decode: $e');
       }
     }
   }

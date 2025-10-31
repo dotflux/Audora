@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import '../../utils/log.dart';
 
 class AudoraClient {
   String get currentClientVersion {
@@ -70,7 +71,7 @@ class AudoraClient {
       body: jsonEncode(body),
     );
 
-    print('HTTP ${response.statusCode} for $endpoint');
+    log.d('HTTP ${response.statusCode} for $endpoint');
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -104,7 +105,7 @@ class AudoraClient {
       body: jsonEncode(body),
     );
 
-    print('HTTP ${response.statusCode} for YT $endpoint');
+    log.d('HTTP ${response.statusCode} for YT $endpoint');
 
     if (response.statusCode != 200) {
       throw Exception('HTTP ${response.statusCode}: ${response.body}');
