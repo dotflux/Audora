@@ -6,9 +6,11 @@ import 'package:uri/uri.dart';
 import 'dart:io';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'package:youtube_explode_dart/youtube_explode_dart.dart';
 
 class AudoraPlayer {
   final AudoraClient client;
+  final YoutubeExplode _yt = YoutubeExplode();
 
   AudoraPlayer(this.client);
 
@@ -66,6 +68,24 @@ class AudoraPlayer {
       return data;
     } catch (e, st) {
       print('[ERROR] Failed to fetch audio from Node server: $e');
+      print(st);
+      return null;
+    }
+  }
+
+  Future<String?> getAudioUrlExplode(String videoId) async {
+    try {
+      final manifest = await _yt.videos.streams.getManifest(
+        videoId,
+        requireWatchPage: true,
+        ytClients: [YoutubeApiClient.androidVr],
+      );
+      final audioOnly = manifest.audioOnly;
+      if (audioOnly.isEmpty) return null;
+      final best = audioOnly.sortByBitrate().last;
+      return best.url.toString();
+    } catch (e, st) {
+      print('[ERROR] youtube_explode_dart failed for $videoId: $e');
       print(st);
       return null;
     }

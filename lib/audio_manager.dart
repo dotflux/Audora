@@ -53,7 +53,7 @@ class AudioManager {
 
     currentTrack = MediaItem(
       id: track.videoId,
-      album: "YouTube Music",
+      album: "Audora",
       title: track.title,
       artist: track.artist,
       artUri: track.thumbnail != null ? Uri.parse(track.thumbnail!) : null,
@@ -71,10 +71,10 @@ class AudioManager {
       if (_urlCache.containsKey(requestedVideoId)) {
         url = _urlCache[requestedVideoId]!;
       } else {
-        final audioData = await player.getAudioFromServer(requestedVideoId);
+        final fetched = await player.getAudioUrlExplode(requestedVideoId);
         if (_currentPlayingVideoId != requestedVideoId) return;
-        if (audioData == null || audioData['url'] == null) return;
-        url = audioData['url'];
+        if (fetched == null) return;
+        url = fetched;
         _urlCache[requestedVideoId] = url;
       }
 
