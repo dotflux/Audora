@@ -378,4 +378,184 @@ class AudoraSearch {
       return [];
     }
   }
+
+  Future<List<Track>> getRelatedSongs(
+    String videoId, {
+    String? visitorData,
+  }) async {
+    try {
+      log.d('🎵 Fetching related songs for videoId: $videoId');
+
+      final vData = visitorData ?? await client.getVisitorData();
+
+      final body1 = Map<String, dynamic>.from(
+        client.baseContext(visitorData: vData),
+      );
+      body1['isAudioOnly'] = true;
+      body1['videoId'] = videoId;
+      body1['enablePersistentPlaylistPanel'] = true;
+      body1['tunerSettingValue'] = 'AUTOMIX_SETTING_NORMAL';
+      body1['params'] = 'wAEB';
+
+      final res1 = await client.post('next', body1, visitorData: vData);
+
+      dynamic nav(Map data, List path) {
+        dynamic current = data;
+        for (final key in path) {
+          if (current is Map) {
+            current = current[key];
+          } else if (current is List && key is int && key < current.length) {
+            current = current[key];
+          } else {
+            return null;
+          }
+        }
+        return current;
+      }
+
+      final playlistId = nav(res1, [
+        'contents',
+        'singleColumnMusicWatchNextResultsRenderer',
+        'tabbedRenderer',
+        'watchNextTabbedResultsRenderer',
+        'tabs',
+        0,
+        'tabRenderer',
+        'content',
+        'musicQueueRenderer',
+        'content',
+        'playlistPanelRenderer',
+        'contents',
+        1,
+        'automixPreviewVideoRenderer',
+        'content',
+        'automixPlaylistVideoRenderer',
+        'navigationEndpoint',
+        'watchPlaylistEndpoint',
+        'playlistId',
+      ])?.toString();
+
+      if (playlistId == null || playlistId.isEmpty) {
+        log.d('⚠️ No automix playlist found for videoId: $videoId');
+        return [];
+      }
+
+      log.d('✅ Found automix playlistId: $playlistId');
+
+      final body2 = Map<String, dynamic>.from(
+        client.baseContext(visitorData: vData),
+      );
+      body2['isAudioOnly'] = true;
+      body2['videoId'] = videoId;
+      body2['playlistId'] = playlistId;
+      body2['enablePersistentPlaylistPanel'] = true;
+      body2['tunerSettingValue'] = 'AUTOMIX_SETTING_NORMAL';
+      body2['params'] = 'wAEB';
+
+      final res2 = await client.post('next', body2, visitorData: vData);
+
+      final items =
+          (nav(res2, [
+                'contents',
+                'singleColumnMusicWatchNextResultsRenderer',
+                'tabbedRenderer',
+                'watchNextTabbedResultsRenderer',
+                'tabs',
+                0,
+                'tabRenderer',
+                'content',
+                'musicQueueRenderer',
+                'content',
+                'playlistPanelRenderer',
+                'contents',
+              ])
+              as List?) ??
+          [];
+
+      final List<Track> results = [];
+
+      for (final item in items) {
+        try {
+          final itemMap = item as Map;
+          final renderer = itemMap['playlistPanelVideoRenderer'] as Map?;
+          if (renderer == null) continue;
+
+          final title =
+              nav(renderer, ['title', 'runs', 0, 'text'])?.toString() ?? '';
+          final vidId = nav(renderer, ['videoId'])?.toString();
+          if (vidId == null || vidId.isEmpty) continue;
+
+          String image = '';
+          try {
+            final thumbs = nav(renderer, ['thumbnail', 'thumbnails']) as List?;
+            if (thumbs != null && thumbs.isNotEmpty) {
+              image = thumbs.last['url']?.toString() ?? '';
+              image = image.replaceAll(RegExp(r'=w\d+-h\d+'), '=w1080-h1080');
+            }
+          } catch (_) {
+            image = '';
+          }
+          final duration =
+              nav(renderer, ['lengthText', 'runs', 0, 'text'])?.toString() ??
+              '';
+
+          final subtitleList =
+              (nav(renderer, ['longBylineText', 'runs']) as List?) ?? [];
+          String artists = '';
+          String album = '';
+          int count = 0;
+
+          for (final element in subtitleList) {
+            final elMap = element as Map;
+            if (elMap['text']?.toString().trim() == '•') {
+              count++;
+            } else {
+              if (count == 0) {
+                artists += elMap['text']?.toString() ?? '';
+              } else if (count == 1 && subtitleList.length > 2) {
+                album += elMap['text']?.toString() ?? '';
+              }
+            }
+          }
+
+          if (album.contains('views')) album = '';
+
+          int? durationSec;
+          if (duration.isNotEmpty) {
+            try {
+              final parts = duration.split(':');
+              if (parts.length == 2) {
+                durationSec = int.parse(parts[0]) * 60 + int.parse(parts[1]);
+              } else if (parts.length == 3) {
+                durationSec =
+                    int.parse(parts[0]) * 3600 +
+                    int.parse(parts[1]) * 60 +
+                    int.parse(parts[2]);
+              }
+            } catch (_) {}
+          }
+
+          results.add(
+            Track(
+              videoId: vidId,
+              title: title,
+              artist: artists,
+              thumbnail: image.isNotEmpty ? image : null,
+              durationSec: durationSec,
+            ),
+          );
+        } catch (e) {
+          log.d('⚠️ Error parsing related song item: $e');
+          continue;
+        }
+      }
+
+      log.d('✅ Found ${results.length} related songs');
+      return results;
+    } catch (e, st) {
+      log.d('⚠️ Failed to fetch related songs for $videoId: $e');
+      log.d(st);
+      return [];
+    }
+  }
 }

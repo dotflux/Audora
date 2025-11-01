@@ -83,7 +83,14 @@ class _MainScreenState extends State<MainScreen> {
                 isCustom: _isCustomPlaylist,
                 audioManager: _audioManager,
                 search: _search,
-                onBack: closePlaylist,
+                onBack: () {
+                  closePlaylist();
+                  if (_currentIndex == 2) {
+                    setState(() {
+                      _currentIndex = 2;
+                    });
+                  }
+                },
               ),
             ),
 
@@ -99,6 +106,7 @@ class _MainScreenState extends State<MainScreen> {
                   mediaItem: currentTrack,
                   isLoadingNotifier: _audioManager.isFetchingNotifier,
                   currentTrackNotifier: _audioManager.currentTrackNotifier,
+                  audioManager: _audioManager,
                   onNext: _audioManager.skipToNext,
                   onPrevious: _audioManager.skipToPrevious,
                 ),

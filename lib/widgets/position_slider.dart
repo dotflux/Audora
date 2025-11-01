@@ -67,7 +67,7 @@ class PositionSlider extends StatelessWidget {
                           data: SliderTheme.of(context).copyWith(
                             trackHeight: 1,
                             thumbShape: const RoundSliderThumbShape(
-                              enabledThumbRadius: 1,
+                              enabledThumbRadius: 4,
                             ),
                             overlayShape: const RoundSliderOverlayShape(
                               overlayRadius: 3,

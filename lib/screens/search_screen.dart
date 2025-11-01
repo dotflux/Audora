@@ -87,7 +87,7 @@ class _SearchScreenState extends State<SearchScreen> {
       return;
     }
 
-    await widget.audioManager.playTrack(track, queue: _tracks);
+    await widget.audioManager.playTrack(track, fetchRelated: true);
   }
 
   @override

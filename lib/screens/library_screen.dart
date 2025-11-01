@@ -35,6 +35,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadPlaylists();
   }
 
+
   Future<void> _importSpotify() async {
     final controller = TextEditingController();
 
@@ -97,40 +98,16 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     int done = 0;
     int total = 0;
-    late void Function(void Function()) setProgress;
+    final progressKey = GlobalKey<_ProgressDialogState>();
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            setProgress = setState;
-            final progress = total > 0 ? done / total : null;
-            return AlertDialog(
-              backgroundColor: Colors.black,
-              title: const Text(
-                'Importing...',
-                style: TextStyle(color: Colors.white),
-              ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  LinearProgressIndicator(
-                    value: progress,
-                    color: Colors.greenAccent,
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    total == 0 ? 'Preparing...' : 'Imported $done of $total',
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
+      builder: (context) => _ProgressDialog(
+        key: progressKey,
+        done: done,
+        total: total,
+      ),
     );
 
     try {
@@ -139,7 +116,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         onProgress: (d, t) {
           done = d;
           total = t;
-          setProgress(() {});
+          progressKey.currentState?.update(d, t);
         },
       );
 
@@ -289,7 +266,6 @@ class _LibraryScreenState extends State<LibraryScreen> {
                         title: name,
                         isCustom: true,
                       );
-                      if (mounted) _loadPlaylists();
                     },
                     child: Container(
                       height: 130,
@@ -355,6 +331,62 @@ class _LibraryScreenState extends State<LibraryScreen> {
                 },
               ),
             ),
+    );
+  }
+}
+
+class _ProgressDialog extends StatefulWidget {
+  final int done;
+  final int total;
+
+  const _ProgressDialog({super.key, required this.done, required this.total});
+
+  @override
+  State<_ProgressDialog> createState() => _ProgressDialogState();
+}
+
+class _ProgressDialogState extends State<_ProgressDialog> {
+  int done = 0;
+  int total = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    done = widget.done;
+    total = widget.total;
+  }
+
+  void update(int d, int t) {
+    if (mounted) {
+      setState(() {
+        done = d;
+        total = t;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: Colors.black,
+      title: const Text(
+        'Importing...',
+        style: TextStyle(color: Colors.white),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          LinearProgressIndicator(
+            value: total > 0 ? done / total : null,
+            color: Colors.greenAccent,
+          ),
+          const SizedBox(height: 12),
+          Text(
+            total == 0 ? 'Preparing...' : 'Imported $done of $total',
+            style: const TextStyle(color: Colors.white70),
+          ),
+        ],
+      ),
     );
   }
 }

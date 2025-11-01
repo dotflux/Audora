@@ -3,8 +3,8 @@ import 'package:just_audio/just_audio.dart';
 
 class PlaybackControls extends StatelessWidget {
   final AudioPlayer player;
-  final bool isLiked;
-  final VoidCallback onLike;
+  final bool hasBestPart;
+  final VoidCallback onGoToBestPart;
   final LoopMode loopMode;
   final VoidCallback cycleLoopMode;
   final ValueNotifier<bool>? isLoadingNotifier;
@@ -15,8 +15,8 @@ class PlaybackControls extends StatelessWidget {
   const PlaybackControls({
     super.key,
     required this.player,
-    required this.isLiked,
-    required this.onLike,
+    required this.hasBestPart,
+    required this.onGoToBestPart,
     required this.loopMode,
     required this.cycleLoopMode,
     this.isLoadingNotifier,
@@ -83,10 +83,9 @@ class PlaybackControls extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
                 _fancyButton(
-                  isLiked ? Icons.favorite : Icons.favorite_border,
+                  Icons.replay,
                   size: 22,
-                  active: isLiked,
-                  onPressed: onLike,
+                  onPressed: hasBestPart ? onGoToBestPart : null,
                 ),
                 _fancyButton(
                   Icons.skip_previous,

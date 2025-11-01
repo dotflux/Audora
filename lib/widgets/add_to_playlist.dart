@@ -93,6 +93,7 @@ class _AddToPlaylistDialogState extends State<AddToPlaylistDialog> {
   Widget build(BuildContext context) {
     return Dialog(
       backgroundColor: Colors.black,
+      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),

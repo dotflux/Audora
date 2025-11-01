@@ -3,12 +3,14 @@ import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import '../screens/player_screen.dart';
+import '../audio_manager.dart';
 
 class MiniPlayer extends StatelessWidget {
   final AudioPlayer player;
   final MediaItem? mediaItem;
   final ValueNotifier<bool>? isLoadingNotifier;
   final ValueNotifier<MediaItem?> currentTrackNotifier;
+  final AudioManager audioManager;
 
   final VoidCallback? onNext;
   final VoidCallback? onPrevious;
@@ -19,6 +21,7 @@ class MiniPlayer extends StatelessWidget {
     this.mediaItem,
     this.isLoadingNotifier,
     required this.currentTrackNotifier,
+    required this.audioManager,
     this.onNext,
     this.onPrevious,
   });
@@ -37,6 +40,7 @@ class MiniPlayer extends StatelessWidget {
                 PageRouteBuilder(
                   transitionDuration: const Duration(milliseconds: 200),
                   pageBuilder: (_, __, ___) => PlayerScreen(
+                    audioManager: audioManager,
                     player: player,
                     mediaItem: mediaItem!,
                     currentTrackNotifier: currentTrackNotifier,

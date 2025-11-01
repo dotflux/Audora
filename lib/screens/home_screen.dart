@@ -149,7 +149,11 @@ class _HomeScreenState extends State<HomeScreen> {
       return;
     }
 
-    await widget.audioManager.playTrack(track, queue: queue);
+    await widget.audioManager.playTrack(
+      track,
+      queue: queue,
+      fetchRelated: true,
+    );
 
     setState(() {
       recentlyPlayedFuture = RecentlyPlayed.getTracks();
@@ -300,7 +304,7 @@ class _HomeScreenState extends State<HomeScreen> {
             itemBuilder: (context, i) {
               final track = tracks[i];
               return GestureDetector(
-                onTap: () => _handleTapTrack(track, queue: tracks),
+                onTap: () => _handleTapTrack(track),
                 child: Container(
                   width: 140,
                   margin: const EdgeInsets.only(right: 12),
@@ -358,7 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, index) {
           final track = top[index];
           return GestureDetector(
-            onTap: () => _handleTapTrack(track, queue: top),
+            onTap: () => _handleTapTrack(track),
             child: Container(
               margin: const EdgeInsets.symmetric(horizontal: 10),
               decoration: BoxDecoration(
@@ -441,7 +445,7 @@ class _HomeScreenState extends State<HomeScreen> {
         itemBuilder: (context, i) {
           final track = tracks[i];
           return GestureDetector(
-            onTap: () => _handleTapTrack(track, queue: tracks),
+            onTap: () => _handleTapTrack(track),
             child: Container(
               width: 140,
               margin: const EdgeInsets.only(right: 12),
