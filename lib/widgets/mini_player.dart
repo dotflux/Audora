@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
@@ -69,10 +70,17 @@ class MiniPlayer extends StatelessWidget {
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
-                        Image.network(
-                          mediaItem!.artUri.toString(),
-                          fit: BoxFit.cover,
-                        ),
+                        mediaItem!.artUri!.scheme == 'file'
+                            ? Image.file(
+                                File(mediaItem!.artUri!.path),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: Colors.black),
+                              )
+                            : Image.network(
+                                mediaItem!.artUri.toString(),
+                                fit: BoxFit.cover,
+                                errorBuilder: (_, __, ___) => Container(color: Colors.black),
+                              ),
                         BackdropFilter(
                           filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
                           child: Container(
@@ -96,12 +104,29 @@ class MiniPlayer extends StatelessWidget {
                       if (mediaItem!.artUri != null)
                         ClipRRect(
                           borderRadius: BorderRadius.circular(8),
-                          child: Image.network(
-                            mediaItem!.artUri.toString(),
-                            width: 50,
-                            height: 50,
-                            fit: BoxFit.cover,
-                          ),
+                          child: mediaItem!.artUri!.scheme == 'file'
+                              ? Image.file(
+                                  File(mediaItem!.artUri!.path),
+                                  width: 50,
+                                  height: 50,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 50,
+                                    height: 50,
+                                    color: Colors.white24,
+                                  ),
+                                )
+                              : Image.network(
+                                  mediaItem!.artUri.toString(),
+                                  width: 50,
+                                  height: 50,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) => Container(
+                                    width: 50,
+                                    height: 50,
+                                    color: Colors.white24,
+                                  ),
+                                ),
                         ),
 
                       const SizedBox(width: 12),

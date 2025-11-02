@@ -1,14 +1,21 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import '../widgets/glow_album_art.dart';
 import '../widgets/position_slider.dart';
 import '../widgets/playback_controls.dart';
 import '../widgets/animated_equalizer.dart';
 import '../widgets/track_info.dart';
+import '../widgets/lyrics.dart';
+import '../widgets/track_image.dart';
 import '../audio_manager.dart';
 import '../data/track_best_parts.dart';
+import '../data/downloads.dart';
+import '../data/download_progress.dart';
 import '../audora_music.dart';
 
 class PlayerScreen extends StatefulWidget {
@@ -40,6 +47,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
   bool _isDragging = false;
   double _dragValue = 0.0;
   final DraggableScrollableController _queueController =
+      DraggableScrollableController();
+  final DraggableScrollableController _lyricsController =
       DraggableScrollableController();
 
   MediaItem? media;
@@ -81,67 +90,424 @@ class _PlayerScreenState extends State<PlayerScreen> {
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      builder: (context) => Container(
-        decoration: const BoxDecoration(
-          color: Color(0xFF181818),
-          borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-        ),
-        child: SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: const Icon(Icons.loop, color: Colors.white70),
-                title: const Text(
-                  'Set Best Part',
-                  style: TextStyle(color: Colors.white),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _showSetBestPart();
-                },
+      builder: (context) => Stack(
+        fit: StackFit.expand,
+        children: [
+          if (media?.artUri != null)
+            ClipRRect(
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
               ),
-              if (media != null && TrackBestParts.hasBestPart(media!.id))
-                ListTile(
-                  leading: const Icon(Icons.refresh, color: Colors.white70),
-                  title: const Text(
-                    'Reset Best Part',
-                    style: TextStyle(color: Colors.white),
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: media!.artUri!.scheme == 'file'
+                        ? Image.file(
+                            File(media!.artUri!.path),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                Container(color: Colors.black),
+                          )
+                        : Image.network(
+                            media!.artUri.toString(),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) =>
+                                Container(color: Colors.black),
+                          ),
                   ),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await TrackBestParts.resetBestPart(media!.id);
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Best part reset!'),
-                          duration: Duration(seconds: 2),
-                          backgroundColor: Colors.orange,
-                        ),
+                  Positioned.fill(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                      child: Container(
+                        color: const Color.fromRGBO(0, 0, 0, 0.85),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          SafeArea(
+            child: Container(
+              decoration: const BoxDecoration(
+                color: Colors.transparent,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 12, bottom: 8),
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: Colors.white24,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  ListTile(
+                    leading: const Icon(Icons.loop, color: Colors.white70),
+                    title: const Text(
+                      'Set Best Part',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSetBestPart();
+                    },
+                  ),
+                  if (media != null && TrackBestParts.hasBestPart(media!.id))
+                    ListTile(
+                      leading: const Icon(Icons.refresh, color: Colors.white70),
+                      title: const Text(
+                        'Reset Best Part',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () async {
+                        Navigator.pop(context);
+                        await TrackBestParts.resetBestPart(media!.id);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(
+                              content: Text('Best part reset!'),
+                              duration: Duration(seconds: 2),
+                              backgroundColor: Colors.orange,
+                            ),
+                          );
+                        }
+                      },
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.download, color: Colors.white70),
+                    title: const Text(
+                      'Download',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _downloadTrack();
+                    },
+                  ),
+                  ListTile(
+                    leading: const Icon(
+                      Icons.queue_music,
+                      color: Colors.white70,
+                    ),
+                    title: const Text(
+                      'Queue',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _queueController.animateTo(
+                        0.5,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
                       );
-                    }
-                  },
+                    },
+                  ),
+                  if (media != null)
+                    ListTile(
+                      leading: const Icon(Icons.lyrics, color: Colors.white70),
+                      title: const Text(
+                        'Lyrics',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _lyricsController.animateTo(
+                          0.5,
+                          duration: const Duration(milliseconds: 300),
+                          curve: Curves.easeOut,
+                        );
+                      },
+                    ),
+                  ListTile(
+                    leading: const Icon(Icons.bedtime, color: Colors.white70),
+                    title: const Text(
+                      'Sleep Timer',
+                      style: TextStyle(color: Colors.white),
+                    ),
+                    onTap: () {
+                      Navigator.pop(context);
+                      _showSleepTimer();
+                    },
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showSleepTimer() {
+    int hours = 0;
+    int minutes = 0;
+    int seconds = 0;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              if (media?.artUri != null)
+                Positioned.fill(
+                  child: media!.artUri!.scheme == 'file'
+                      ? Image.file(
+                          File(media!.artUri!.path),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(color: Colors.black),
+                        )
+                      : Image.network(
+                          media!.artUri.toString(),
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(color: Colors.black),
+                        ),
                 ),
-              ListTile(
-                leading: const Icon(Icons.queue_music, color: Colors.white70),
-                title: const Text(
-                  'Queue',
-                  style: TextStyle(color: Colors.white),
+              if (media?.artUri != null)
+                Positioned.fill(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                    child: Container(color: const Color.fromRGBO(0, 0, 0, 0.7)),
+                  ),
                 ),
-                onTap: () {
-                  Navigator.pop(context);
-                  _queueController.animateTo(
-                    0.5,
-                    duration: const Duration(milliseconds: 300),
-                    curve: Curves.easeOut,
-                  );
-                },
+              Padding(
+                padding: const EdgeInsets.all(20),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Sleep Timer',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildCompactTimeInput('H', hours, 0, 23, (v) {
+                            setDialogState(() => hours = v);
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _buildCompactTimeInput('M', minutes, 0, 59, (
+                            v,
+                          ) {
+                            setDialogState(() => minutes = v);
+                          }),
+                        ),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: _buildCompactTimeInput('S', seconds, 0, 59, (
+                            v,
+                          ) {
+                            setDialogState(() => seconds = v);
+                          }),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 24),
+                    ValueListenableBuilder<Duration?>(
+                      valueListenable: widget.audioManager.sleepTimerNotifier,
+                      builder: (context, remaining, _) {
+                        if (remaining != null) {
+                          return Column(
+                            children: [
+                              Text(
+                                'Active: ${_formatSleepTimer(remaining)}',
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              SizedBox(
+                                width: double.infinity,
+                                child: TextButton(
+                                  onPressed: () {
+                                    widget.audioManager.cancelSleepTimer();
+                                    setDialogState(() {});
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      const SnackBar(
+                                        content: Text('Sleep timer cancelled'),
+                                        duration: Duration(seconds: 2),
+                                        backgroundColor: Colors.orange,
+                                      ),
+                                    );
+                                  },
+                                  style: TextButton.styleFrom(
+                                    padding: const EdgeInsets.symmetric(
+                                      vertical: 12,
+                                    ),
+                                  ),
+                                  child: const Text(
+                                    'Cancel Timer',
+                                    style: TextStyle(
+                                      color: Colors.white70,
+                                      fontSize: 14,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          );
+                        }
+                        return Row(
+                          children: [
+                            Expanded(
+                              child: TextButton(
+                                onPressed: () => Navigator.pop(context),
+                                style: TextButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Cancel',
+                                  style: TextStyle(
+                                    color: Colors.white70,
+                                    fontSize: 14,
+                                  ),
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: ElevatedButton(
+                                onPressed: () {
+                                  final duration = Duration(
+                                    hours: hours,
+                                    minutes: minutes,
+                                    seconds: seconds,
+                                  );
+                                  if (duration.inSeconds > 0) {
+                                    widget.audioManager.setSleepTimer(duration);
+                                    Navigator.pop(context);
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(
+                                        content: Text(
+                                          'Sleep timer set for ${_formatSleepTimer(duration)}',
+                                        ),
+                                        duration: const Duration(seconds: 2),
+                                        backgroundColor: Colors.green,
+                                      ),
+                                    );
+                                  }
+                                },
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.blue,
+                                  foregroundColor: Colors.white,
+                                  padding: const EdgeInsets.symmetric(
+                                    vertical: 12,
+                                  ),
+                                ),
+                                child: const Text(
+                                  'Set',
+                                  style: TextStyle(fontSize: 14),
+                                ),
+                              ),
+                            ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  Widget _buildCompactTimeInput(
+    String label,
+    int value,
+    int min,
+    int max,
+    Function(int) onChanged,
+  ) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 11),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            GestureDetector(
+              onTap: value > min ? () => onChanged(value - 1) : null,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(value > min ? 0.15 : 0.05),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.remove, color: Colors.white, size: 16),
+              ),
+            ),
+            Container(
+              margin: const EdgeInsets.symmetric(horizontal: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.white.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: Text(
+                value.toString().padLeft(2, '0'),
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+            GestureDetector(
+              onTap: value < max ? () => onChanged(value + 1) : null,
+              child: Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: Colors.white.withOpacity(value < max ? 0.15 : 0.05),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: const Icon(Icons.add, color: Colors.white, size: 16),
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  String _formatSleepTimer(Duration duration) {
+    final hours = duration.inHours;
+    final minutes = duration.inMinutes.remainder(60);
+    final secs = duration.inSeconds.remainder(60);
+    if (hours > 0) {
+      return '${hours}h ${minutes}m ${secs}s';
+    } else if (minutes > 0) {
+      return '${minutes}m ${secs}s';
+    }
+    return '${secs}s';
   }
 
   void _showSetBestPart() {
@@ -300,6 +666,116 @@ class _PlayerScreenState extends State<PlayerScreen> {
     );
   }
 
+  Future<void> _downloadTrack() async {
+    if (media == null) return;
+    if (Downloads.isDownloaded(media!.id)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Track already downloaded'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      final appDir = await getApplicationDocumentsDirectory();
+      final downloadsDir = Directory('${appDir.path}/downloads');
+      if (!await downloadsDir.exists()) {
+        await downloadsDir.create(recursive: true);
+      }
+
+      DownloadProgressTracker.update(
+        media!.id,
+        0,
+        'Fetching audio URL...',
+        title: media!.title,
+        artist: media!.artist ?? '',
+      );
+      final audioUrl = await widget.audioManager.player.getAudioUrlExplode(
+        media!.id,
+      );
+      if (audioUrl == null) throw Exception('Failed to get audio URL');
+
+      DownloadProgressTracker.update(
+        media!.id,
+        10,
+        'Downloading audio...',
+        title: media!.title,
+        artist: media!.artist ?? '',
+      );
+      final audioResponse = await http.get(Uri.parse(audioUrl));
+      if (audioResponse.statusCode != 200)
+        throw Exception('Failed to download audio');
+
+      final audioPath = '${downloadsDir.path}/${media!.id}.m4a';
+      final audioFile = File(audioPath);
+      await audioFile.writeAsBytes(audioResponse.bodyBytes);
+
+      String? albumArtPath;
+      if (media!.artUri != null) {
+        DownloadProgressTracker.update(
+          media!.id,
+          90,
+          'Downloading album art...',
+          title: media!.title,
+          artist: media!.artist ?? '',
+        );
+        try {
+          final artResponse = await http.get(media!.artUri!);
+          if (artResponse.statusCode == 200) {
+            albumArtPath = '${downloadsDir.path}/${media!.id}_art.jpg';
+            final artFile = File(albumArtPath);
+            await artFile.writeAsBytes(artResponse.bodyBytes);
+          }
+        } catch (_) {}
+      }
+
+      DownloadProgressTracker.update(
+        media!.id,
+        100,
+        'Saving...',
+        title: media!.title,
+        artist: media!.artist ?? '',
+      );
+      final downloadedTrack = DownloadedTrack(
+        videoId: media!.id,
+        title: media!.title,
+        artist: media!.artist ?? '',
+        albumArtPath: albumArtPath,
+        audioPath: audioPath,
+        downloadedAt: DateTime.now(),
+      );
+
+      await Downloads.add(downloadedTrack);
+      DownloadProgressTracker.remove(media!.id);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Download completed!'),
+            duration: Duration(seconds: 2),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      DownloadProgressTracker.remove(media!.id);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Download failed: $e'),
+            duration: const Duration(seconds: 3),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
   String _formatDuration(Duration d) {
     String twoDigits(int n) => n.toString().padLeft(2, '0');
     final hours = d.inHours;
@@ -309,13 +785,6 @@ class _PlayerScreenState extends State<PlayerScreen> {
       return '$hours:$minutes:$seconds';
     }
     return '$minutes:$seconds';
-  }
-
-  @override
-  void dispose() {
-    widget.currentTrackNotifier.removeListener(_onTrackChanged);
-    widget.isLoadingNotifier?.removeListener(_onLoadingChanged);
-    super.dispose();
   }
 
   @override
@@ -330,7 +799,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
       children: [
         if (media!.artUri != null) ...[
           Positioned.fill(
-            child: Image.network(media!.artUri.toString(), fit: BoxFit.cover),
+            child: media!.artUri!.scheme == 'file'
+                ? Image.file(
+                    File(media!.artUri!.path),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.black),
+                  )
+                : Image.network(
+                    media!.artUri.toString(),
+                    fit: BoxFit.cover,
+                    errorBuilder: (_, __, ___) =>
+                        Container(color: Colors.black),
+                  ),
           ),
           Positioned.fill(
             child: BackdropFilter(
@@ -348,11 +829,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
             iconTheme: const IconThemeData(color: Colors.white),
             title: const Text(
               'Audora',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 16,
-              ),
+              style: TextStyle(color: Colors.white, fontSize: 16),
             ),
             actions: [
               IconButton(
@@ -403,7 +880,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         isLoadingNotifier: widget.isLoadingNotifier,
                       ),
                       const SizedBox(height: 24),
-                      const AnimatedEqualizer(),
+                      AnimatedEqualizer(player: widget.player),
                       const SizedBox(height: 14),
                       ValueListenableBuilder<LoopMode>(
                         valueListenable: widget.audioManager.loopModeNotifier,
@@ -429,6 +906,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
           ),
         ),
         _buildQueueSheet(),
+        _buildLyricsSheet(),
       ],
     );
   }
@@ -444,6 +922,8 @@ class _PlayerScreenState extends State<PlayerScreen> {
           initialChildSize: 0.0,
           minChildSize: 0.0,
           maxChildSize: 0.85,
+          snap: true,
+          snapSizes: const [0.0, 0.5, 0.85],
           builder: (context, scrollController) {
             return Material(
               color: Colors.transparent,
@@ -455,6 +935,7 @@ class _PlayerScreenState extends State<PlayerScreen> {
                   ),
                 ),
                 child: Stack(
+                  fit: StackFit.expand,
                   children: [
                     if (media?.artUri != null)
                       ClipRRect(
@@ -464,10 +945,19 @@ class _PlayerScreenState extends State<PlayerScreen> {
                         child: Stack(
                           children: [
                             Positioned.fill(
-                              child: Image.network(
-                                media!.artUri.toString(),
-                                fit: BoxFit.cover,
-                              ),
+                              child: media!.artUri!.scheme == 'file'
+                                  ? Image.file(
+                                      File(media!.artUri!.path),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          Container(color: Colors.black),
+                                    )
+                                  : Image.network(
+                                      media!.artUri.toString(),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, __, ___) =>
+                                          Container(color: Colors.black),
+                                    ),
                             ),
                             Positioned.fill(
                               child: BackdropFilter(
@@ -483,139 +973,335 @@ class _PlayerScreenState extends State<PlayerScreen> {
                           ],
                         ),
                       ),
-                    Column(
-                      children: [
-                        Container(
-                          margin: const EdgeInsets.only(top: 12, bottom: 8),
-                          width: 40,
-                          height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.white24,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 20,
-                            vertical: 12,
-                          ),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            children: [
-                              const Text(
-                                'Queue',
-                                style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 24,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                              IconButton(
-                                icon: const Icon(
-                                  Icons.close,
-                                  color: Colors.white70,
-                                ),
-                                onPressed: () => _queueController.animateTo(
+                    Positioned.fill(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onVerticalDragUpdate: (details) {
+                              final delta =
+                                  -details.primaryDelta! /
+                                  MediaQuery.of(context).size.height;
+                              final currentSize = _queueController.size;
+                              final newSize = (currentSize + delta).clamp(
+                                0.0,
+                                0.85,
+                              );
+                              _queueController.jumpTo(newSize);
+                            },
+                            onVerticalDragEnd: (details) {
+                              final size = _queueController.size;
+                              if (size < 0.25) {
+                                _queueController.animateTo(
                                   0.0,
                                   duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeIn,
+                                );
+                              } else if (size < 0.675) {
+                                _queueController.animateTo(
+                                  0.5,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOut,
+                                );
+                              } else {
+                                _queueController.animateTo(
+                                  0.85,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOut,
+                                );
+                              }
+                            },
+                            child: Container(
+                              margin: const EdgeInsets.only(top: 12, bottom: 8),
+                              padding: const EdgeInsets.symmetric(vertical: 8),
+                              child: Container(
+                                width: 40,
+                                height: 4,
+                                decoration: BoxDecoration(
+                                  color: Colors.white24,
+                                  borderRadius: BorderRadius.circular(2),
                                 ),
                               ),
-                            ],
+                            ),
                           ),
-                        ),
-                        Expanded(
-                          child: ListView.builder(
-                            controller: scrollController,
-                            itemCount: queue.length,
-                            itemBuilder: (context, index) {
-                              final track = queue[index];
-                              final isCurrent = index == currentIndex;
-                              return Container(
-                                margin: const EdgeInsets.symmetric(
-                                  horizontal: 16,
-                                  vertical: 4,
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                              vertical: 12,
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                const Text(
+                                  'Queue',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.bold,
+                                  ),
                                 ),
-                                decoration: BoxDecoration(
-                                  color: isCurrent
-                                      ? Colors.blue.withOpacity(0.2)
-                                      : Colors.white.withOpacity(0.05),
-                                  borderRadius: BorderRadius.circular(12),
-                                  border: isCurrent
-                                      ? Border.all(
-                                          color: Colors.blue.withOpacity(0.5),
-                                          width: 1,
-                                        )
-                                      : null,
+                                IconButton(
+                                  icon: const Icon(
+                                    Icons.close,
+                                    color: Colors.white70,
+                                  ),
+                                  onPressed: () => _queueController.animateTo(
+                                    0.0,
+                                    duration: const Duration(milliseconds: 300),
+                                    curve: Curves.easeIn,
+                                  ),
                                 ),
-                                child: ListTile(
-                                  contentPadding: const EdgeInsets.symmetric(
+                              ],
+                            ),
+                          ),
+                          Expanded(
+                            child: ListView.builder(
+                              controller: scrollController,
+                              itemCount: queue.length,
+                              itemBuilder: (context, index) {
+                                final track = queue[index];
+                                final isCurrent = index == currentIndex;
+                                return Container(
+                                  margin: const EdgeInsets.symmetric(
                                     horizontal: 16,
-                                    vertical: 8,
+                                    vertical: 4,
                                   ),
-                                  leading: ClipRRect(
-                                    borderRadius: BorderRadius.circular(8),
-                                    child: track.thumbnail != null
-                                        ? Image.network(
-                                            track.thumbnail!,
-                                            width: 56,
-                                            height: 56,
-                                            fit: BoxFit.cover,
+                                  decoration: BoxDecoration(
+                                    color: isCurrent
+                                        ? Colors.blue.withOpacity(0.2)
+                                        : Colors.white.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: isCurrent
+                                        ? Border.all(
+                                            color: Colors.blue.withOpacity(0.5),
+                                            width: 1,
                                           )
-                                        : Container(
-                                            width: 56,
-                                            height: 56,
-                                            color: Colors.white24,
-                                            child: const Icon(
-                                              Icons.music_note,
-                                              color: Colors.white54,
-                                              size: 28,
-                                            ),
-                                          ),
+                                        : null,
                                   ),
-                                  title: Text(
-                                    track.title,
-                                    style: TextStyle(
-                                      color: isCurrent
-                                          ? Colors.blue
-                                          : Colors.white,
-                                      fontWeight: isCurrent
-                                          ? FontWeight.bold
-                                          : FontWeight.w500,
-                                      fontSize: 16,
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 8,
                                     ),
-                                  ),
-                                  subtitle: Text(
-                                    track.artist,
-                                    style: TextStyle(
-                                      color: isCurrent
-                                          ? Colors.blue.withOpacity(0.8)
-                                          : Colors.white70,
-                                      fontSize: 14,
+                                    leading: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: TrackImage(
+                                        thumbnail: track.thumbnail,
+                                        width: 56,
+                                        height: 56,
+                                      ),
                                     ),
+                                    title: Text(
+                                      track.title,
+                                      style: TextStyle(
+                                        color: isCurrent
+                                            ? Colors.blue
+                                            : Colors.white,
+                                        fontWeight: isCurrent
+                                            ? FontWeight.bold
+                                            : FontWeight.w500,
+                                        fontSize: 16,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      track.artist,
+                                      style: TextStyle(
+                                        color: isCurrent
+                                            ? Colors.blue.withOpacity(0.8)
+                                            : Colors.white70,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    trailing: isCurrent
+                                        ? const Icon(
+                                            Icons.play_arrow,
+                                            color: Colors.blue,
+                                            size: 28,
+                                          )
+                                        : null,
+                                    onTap: () {
+                                      widget.audioManager.setCurrentIndex(
+                                        index,
+                                      );
+                                    },
                                   ),
-                                  trailing: isCurrent
-                                      ? const Icon(
-                                          Icons.play_arrow,
-                                          color: Colors.blue,
-                                          size: 28,
-                                        )
-                                      : null,
-                                  onTap: () {
-                                    widget.audioManager.setCurrentIndex(index);
-                                  },
-                                ),
-                              );
-                            },
+                                );
+                              },
+                            ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ],
                 ),
               ),
             );
           },
+        );
+      },
+    );
+  }
+
+  Widget _buildLyricsSheet() {
+    if (media == null) return const SizedBox.shrink();
+
+    final track = Track(
+      videoId: media!.id,
+      title: media!.title,
+      artist: media!.artist ?? '',
+      thumbnail: media!.artUri?.toString(),
+    );
+
+    return DraggableScrollableSheet(
+      controller: _lyricsController,
+      initialChildSize: 0.0,
+      minChildSize: 0.0,
+      maxChildSize: 0.85,
+      snap: true,
+      snapSizes: const [0.0, 0.5, 0.85],
+      builder: (context, scrollController) {
+        return Material(
+          color: Colors.transparent,
+          child: Container(
+            decoration: BoxDecoration(
+              color: Colors.transparent,
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(24),
+              ),
+            ),
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                if (media?.artUri != null)
+                  ClipRRect(
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    child: Stack(
+                      children: [
+                        Positioned.fill(
+                          child: media!.artUri!.scheme == 'file'
+                              ? Image.file(
+                                  File(media!.artUri!.path),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      Container(color: Colors.black),
+                                )
+                              : Image.network(
+                                  media!.artUri.toString(),
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (_, __, ___) =>
+                                      Container(color: Colors.black),
+                                ),
+                        ),
+                        Positioned.fill(
+                          child: BackdropFilter(
+                            filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                            child: Container(
+                              color: const Color.fromRGBO(0, 0, 0, 0.85),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                Positioned.fill(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onVerticalDragUpdate: (details) {
+                          final delta =
+                              -details.primaryDelta! /
+                              MediaQuery.of(context).size.height;
+                          final currentSize = _lyricsController.size;
+                          final newSize = (currentSize + delta).clamp(
+                            0.0,
+                            0.85,
+                          );
+                          _lyricsController.jumpTo(newSize);
+                        },
+                        onVerticalDragEnd: (details) {
+                          final size = _lyricsController.size;
+                          if (size < 0.25) {
+                            _lyricsController.animateTo(
+                              0.0,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeIn,
+                            );
+                          } else if (size < 0.675) {
+                            _lyricsController.animateTo(
+                              0.5,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          } else {
+                            _lyricsController.animateTo(
+                              0.85,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          }
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(top: 12, bottom: 8),
+                          padding: const EdgeInsets.symmetric(vertical: 8),
+                          child: Container(
+                            width: 40,
+                            height: 4,
+                            decoration: BoxDecoration(
+                              color: Colors.white24,
+                              borderRadius: BorderRadius.circular(2),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 20,
+                          vertical: 12,
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text(
+                              'Lyrics',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 24,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            IconButton(
+                              icon: const Icon(
+                                Icons.close,
+                                color: Colors.white70,
+                              ),
+                              onPressed: () => _lyricsController.animateTo(
+                                0.0,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeIn,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Expanded(
+                        child: LyricsWidget(
+                          track: track,
+                          player: widget.player,
+                          mediaItem: media,
+                          scrollController: scrollController,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );

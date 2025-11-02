@@ -1,5 +1,7 @@
 import 'dart:math';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/painting.dart';
 import 'package:palette_generator/palette_generator.dart';
 
 class GlowingAlbumArt extends StatefulWidget {
@@ -67,8 +69,13 @@ class _GlowingAlbumArtState extends State<GlowingAlbumArt>
     }
 
     try {
+      final uri = Uri.tryParse(url);
+      final ImageProvider imageProvider = uri != null && uri.scheme == 'file'
+          ? FileImage(File(uri.path))
+          : NetworkImage(url) as ImageProvider;
+
       final palette = await PaletteGenerator.fromImageProvider(
-        NetworkImage(url),
+        imageProvider,
         size: const Size(48, 48),
         maximumColorCount: 5,
         timeout: const Duration(milliseconds: 700),
@@ -108,6 +115,34 @@ class _GlowingAlbumArtState extends State<GlowingAlbumArt>
     final sat = (h.saturation * 1.05).clamp(0.0, 1.0);
     final light = (h.lightness).clamp(0.12, 0.78);
     return h.withSaturation(sat).withLightness(light).toColor();
+  }
+
+  Widget _buildImage() {
+    final uri = Uri.tryParse(widget.imageUrl);
+    if (uri != null && uri.scheme == 'file') {
+      return Image.file(
+        File(uri.path),
+        width: widget.size,
+        height: widget.size,
+        fit: BoxFit.cover,
+        errorBuilder: (_, __, ___) => Container(
+          width: widget.size,
+          height: widget.size,
+          color: Colors.black,
+        ),
+      );
+    }
+    return Image.network(
+      widget.imageUrl,
+      width: widget.size,
+      height: widget.size,
+      fit: BoxFit.cover,
+      errorBuilder: (_, __, ___) => Container(
+        width: widget.size,
+        height: widget.size,
+        color: Colors.black,
+      ),
+    );
   }
 
   @override
@@ -165,12 +200,7 @@ class _GlowingAlbumArtState extends State<GlowingAlbumArt>
 
               ClipRRect(
                 borderRadius: BorderRadius.circular(widget.borderRadius),
-                child: Image.network(
-                  widget.imageUrl,
-                  width: artSize,
-                  height: artSize,
-                  fit: BoxFit.cover,
-                ),
+                child: _buildImage(),
               ),
             ],
           );

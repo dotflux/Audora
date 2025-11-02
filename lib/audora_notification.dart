@@ -32,6 +32,7 @@ class AudoraNotification {
     int? positionMs,
     int? durationMs,
     bool hasBestPart = false,
+    String? mediaId,
   }) async {
     log.d("Show notif entered");
     await _channel.invokeMethod('show', {
@@ -42,11 +43,24 @@ class AudoraNotification {
       'positionMs': positionMs,
       'durationMs': durationMs,
       'hasBestPart': hasBestPart,
+      'mediaId': mediaId,
     });
     log.d("Notif showed. + bestpart is $hasBestPart");
   }
 
   static Future<void> hide() async {
     await _channel.invokeMethod('hide');
+  }
+
+  static Future<void> updatePlaybackState({
+    required bool isPlaying,
+    int? positionMs,
+    int? durationMs,
+  }) async {
+    await _channel.invokeMethod('updatePlaybackState', {
+      'isPlaying': isPlaying,
+      'positionMs': positionMs,
+      'durationMs': durationMs,
+    });
   }
 }

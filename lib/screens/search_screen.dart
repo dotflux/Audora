@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import '../audora_music.dart';
 import '../audio_manager.dart';
-import 'dart:io';
-import 'package:path_provider/path_provider.dart';
-import 'playlist_screen.dart';
-import '../widgets/add_to_playlist.dart';
+import '../widgets/track_options_menu.dart';
+import '../repository/spotify/spotify_search.dart';
+import '../repository/spotify/spotify_api.dart';
 
 class SearchScreen extends StatefulWidget {
   final AudioManager audioManager;
@@ -25,16 +25,24 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
+enum SearchSource { youtube, spotify }
+
 class _SearchScreenState extends State<SearchScreen> {
   final TextEditingController _searchController = TextEditingController();
-  late final AudoraSearch _search;
+  late final AudoraSearch _youtubeSearch;
+  late final SpotifySearch _spotifySearch;
   List<Track> _tracks = [];
   bool _isLoading = false;
+  SearchSource _source = SearchSource.youtube;
 
   @override
   void initState() {
     super.initState();
-    _search = AudoraSearch(widget.audioManager.player.client);
+    _youtubeSearch = AudoraSearch(widget.audioManager.player.client);
+    _spotifySearch = SpotifySearch(
+      api: SpotifyApi(),
+      ytmClient: widget.audioManager.player.client,
+    );
   }
 
   Future<void> _searchTracks(String query) async {
@@ -45,28 +53,26 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final visitorData = await widget.audioManager.player.client
-          .getVisitorData();
-      final results = await _search.search(query, visitorData: visitorData);
+      List<Track> results;
+      if (_source == SearchSource.youtube) {
+        final visitorData = await widget.audioManager.player.client
+            .getVisitorData();
+        results = await _youtubeSearch.search(query, visitorData: visitorData);
+      } else {
+        results = await _spotifySearch.search(query);
+      }
       setState(() {
         _tracks = results;
         _isLoading = false;
       });
     } catch (e) {
       setState(() => _isLoading = false);
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Search failed: $e')));
+      }
     }
-  }
-
-  Future<File?> _getCachedAudio(String videoId) async {
-    final tempDir = await getTemporaryDirectory();
-    for (var ext in ['m4a', 'mp3', 'mp4']) {
-      final file = File('${tempDir.path}/$videoId.$ext');
-      if (file.existsSync()) return file;
-    }
-    return null;
   }
 
   @override
@@ -198,33 +204,19 @@ class _SearchScreenState extends State<SearchScreen> {
                                           ),
                                           if (!track.isPlaylist)
                                             GestureDetector(
-                                              onTap: () {
-                                                showModalBottomSheet(
-                                                  context: context,
-                                                  isScrollControlled: true,
-                                                  backgroundColor: const Color(
-                                                    0xFF181818,
+                                              onTap: () =>
+                                                  TrackOptionsMenu.show(
+                                                    context: context,
+                                                    track: track,
+                                                    audioManager:
+                                                        widget.audioManager,
                                                   ),
-                                                  shape: const RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.vertical(
-                                                          top: Radius.circular(
-                                                            20,
-                                                          ),
-                                                        ),
-                                                  ),
-                                                  builder: (_) =>
-                                                      AddToPlaylistDialog(
-                                                        track: track,
-                                                      ),
-                                                );
-                                              },
                                               child: const Padding(
                                                 padding: EdgeInsets.only(
                                                   left: 8,
                                                 ),
                                                 child: Icon(
-                                                  Icons.playlist_add,
+                                                  Icons.more_vert,
                                                   color: Colors.white70,
                                                   size: 20,
                                                 ),
@@ -261,7 +253,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
                                       const SizedBox(height: 2),
                                       Text(
-                                        track.artist ?? '',
+                                        track.artist,
                                         maxLines: 1,
                                         overflow: TextOverflow.ellipsis,
                                         style: const TextStyle(
@@ -282,6 +274,48 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ),
+      floatingActionButton: _buildSourceFAB(),
+      floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
+    );
+  }
+
+  Widget _buildSourceFAB() {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 80),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildFABItem(
+            source: SearchSource.spotify,
+            iconPath: 'assets/icon/spotify.svg',
+          ),
+          const SizedBox(width: 12),
+          _buildFABItem(
+            source: SearchSource.youtube,
+            iconPath: 'assets/icon/youtube.svg',
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFABItem({
+    required SearchSource source,
+    required String iconPath,
+  }) {
+    final isActive = _source == source;
+    return FloatingActionButton(
+      onPressed: () {
+        setState(() {
+          _source = source;
+        });
+      },
+      backgroundColor: isActive
+          ? const Color(0xFF0A84FF)
+          : const Color(0xFF121212),
+      elevation: isActive ? 8 : 4,
+      mini: true,
+      child: SvgPicture.asset(iconPath, width: 24, height: 24),
     );
   }
 }

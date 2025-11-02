@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'search_screen.dart';
 import 'home_screen.dart';
 import 'library_screen.dart';
+import 'downloads_screen.dart';
 import '../audio_manager.dart';
 import '../audora_music.dart';
 import '../widgets/mini_player.dart';
@@ -64,9 +65,7 @@ class _MainScreenState extends State<MainScreen> {
         playTrack: _audioManager.playTrack,
         openPlaylist: openPlaylist,
       ),
-      const Center(
-        child: Text("Settings", style: TextStyle(color: Colors.white)),
-      ),
+      DownloadsScreen(audioManager: _audioManager),
     ];
 
     return Scaffold(
@@ -126,7 +125,7 @@ class _MainScreenState extends State<MainScreen> {
               Icons.home,
               Icons.search,
               Icons.library_music,
-              Icons.settings,
+              Icons.download,
             ];
             final isActive = index == _currentIndex;
             return GestureDetector(

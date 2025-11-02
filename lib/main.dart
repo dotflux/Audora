@@ -7,6 +7,8 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'data/custom_playlists.dart';
 import 'data/track_best_parts.dart';
+import 'data/downloads.dart';
+import 'data/download_progress.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -27,6 +29,8 @@ void main() async {
   await Hive.openBox('recentlyPlayed');
   await CustomPlaylists.init();
   await TrackBestParts.init();
+  await Downloads.init();
+  await DownloadProgressTracker.init();
 
   runApp(Provider.value(value: audioHandler, child: const MyApp()));
 }

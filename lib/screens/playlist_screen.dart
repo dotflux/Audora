@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import '../audora_music.dart';
 import '../audio_manager.dart';
 import '../data/custom_playlists.dart';
-import '../widgets/add_to_playlist.dart';
+import '../widgets/track_options_menu.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../widgets/default_playlist_art.dart';
@@ -36,23 +36,11 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   int _loadedCount = 0;
   bool _isLoadingMore = false;
   int _totalCount = 0;
-  int _totalDurationSec = 0;
 
   @override
   void initState() {
     super.initState();
     _loadPlaylist();
-  }
-
-  String _formatDuration(int totalSec) {
-    if (totalSec <= 0) return '—';
-    final hours = totalSec ~/ 3600;
-    final minutes = (totalSec % 3600) ~/ 60;
-    final seconds = totalSec % 60;
-    if (hours > 0) {
-      return '${hours.toString().padLeft(2, '0')}:${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
-    }
-    return '${minutes.toString().padLeft(2, '0')}:${seconds.toString().padLeft(2, '0')}';
   }
 
   Future<void> _loadPlaylist() async {
@@ -64,9 +52,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           _loadedCount = customTracks.length > 20 ? 20 : customTracks.length;
           _tracks = _allTracks.take(_loadedCount).toList();
           _totalCount = CustomPlaylists.getTrackCount(widget.id);
-          _totalDurationSec = _allTracks
-              .map((t) => t.durationSec ?? 0)
-              .fold(0, (a, b) => a + b);
           _isLoading = false;
         });
       } else {
@@ -74,7 +59,6 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
         setState(() {
           _tracks = apiTracks;
           _totalCount = _tracks.length;
-          _totalDurationSec = 0;
           _isLoading = false;
         });
       }
@@ -589,40 +573,42 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                         ),
                                       ),
                                       trailing: widget.isCustom
-                                          ? IconButton(
-                                              icon: const Icon(
-                                                Icons.delete_outline,
-                                                color: Colors.redAccent,
-                                              ),
-                                              onPressed: () =>
-                                                  _removeTrack(track.videoId),
+                                          ? Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.more_vert,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  onPressed: () => TrackOptionsMenu.show(
+                                                    context: context,
+                                                    track: track,
+                                                    audioManager: widget.audioManager,
+                                                    showAddToPlaylist: false,
+                                                  ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.delete_outline,
+                                                    color: Colors.redAccent,
+                                                  ),
+                                                  onPressed: () =>
+                                                      _removeTrack(track.videoId),
+                                                ),
+                                              ],
                                             )
                                           : IconButton(
                                               icon: const Icon(
-                                                Icons.playlist_add,
+                                                Icons.more_vert,
                                                 color: Colors.white70,
                                               ),
-                                              onPressed: () {
-                                                showModalBottomSheet(
-                                                  context: context,
-                                                  isScrollControlled: true,
-                                                  backgroundColor: const Color(
-                                                    0xFF181818,
-                                                  ),
-                                                  shape: const RoundedRectangleBorder(
-                                                    borderRadius:
-                                                        BorderRadius.vertical(
-                                                          top: Radius.circular(
-                                                            20,
-                                                          ),
-                                                        ),
-                                                  ),
-                                                  builder: (_) =>
-                                                      AddToPlaylistDialog(
-                                                        track: track,
-                                                      ),
-                                                );
-                                              },
+                                              onPressed: () => TrackOptionsMenu.show(
+                                                context: context,
+                                                track: track,
+                                                audioManager: widget.audioManager,
+                                                showAddToPlaylist: false,
+                                              ),
                                             ),
                                     );
                                   },

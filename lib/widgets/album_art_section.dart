@@ -1,4 +1,5 @@
 import 'dart:ui';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import './glow_album_art.dart';
 
@@ -10,9 +11,14 @@ class AlbumArtSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final uri = Uri.tryParse(imageUrl);
+    final backgroundImage = uri != null && uri.scheme == 'file'
+        ? Image.file(File(uri.path), fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black))
+        : Image.network(imageUrl, fit: BoxFit.cover, errorBuilder: (_, __, ___) => Container(color: Colors.black));
+    
     return Stack(
       children: [
-        Positioned.fill(child: Image.network(imageUrl, fit: BoxFit.cover)),
+        Positioned.fill(child: backgroundImage),
         Positioned.fill(
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),

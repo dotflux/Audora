@@ -4,8 +4,10 @@ import 'package:audio_service/audio_service.dart';
 import '../audora_music.dart';
 import './utils/log.dart';
 import 'dart:async';
+import 'dart:io';
 import '/data/recently_played.dart';
 import '/data/track_best_parts.dart';
+import '/data/downloads.dart';
 import 'audora_notification.dart';
 
 class AudioManager {
@@ -32,6 +34,9 @@ class AudioManager {
   int _lastNotificationUpdateMs = 0;
   static const int _notificationThrottleMs = 800;
   bool _isSeeking = false;
+
+  Timer? _sleepTimer;
+  ValueNotifier<Duration?> sleepTimerNotifier = ValueNotifier(null);
 
   AudioManager(this.player) {
     _search = AudoraSearch(player.client);
@@ -61,26 +66,22 @@ class AudioManager {
                 final positionMs = extras?['positionMs'] as int?;
                 if (positionMs != null && audioPlayer.duration != null) {
                   final target = Duration(milliseconds: positionMs);
-                  if (target < audioPlayer.duration!) {
+                  if (target <= audioPlayer.duration!) {
                     _isSeeking = true;
+                    
+                    final durationMs = audioPlayer.duration?.inMilliseconds;
+                    
+                    await AudoraNotification.updatePlaybackState(
+                      isPlaying: audioPlayer.playing,
+                      positionMs: positionMs,
+                      durationMs: durationMs,
+                    );
+                    
                     await audioPlayer.seek(target);
 
-                    if (currentTrack != null) {
-                      final durationMs = audioPlayer.duration?.inMilliseconds;
-                      await AudoraNotification.show(
-                        title: currentTrack!.title,
-                        artist: currentTrack!.artist ?? 'Unknown Artist',
-                        artworkUrl: currentTrack!.artUri?.toString(),
-                        isPlaying: audioPlayer.playing,
-                        positionMs: positionMs,
-                        durationMs: durationMs,
-                        hasBestPart: hasBestPart(),
-                      );
-                      _lastNotificationUpdateMs =
-                          DateTime.now().millisecondsSinceEpoch;
-                    }
+                    _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
 
-                    Future.delayed(const Duration(milliseconds: 500), () {
+                    Future.delayed(const Duration(milliseconds: 1200), () {
                       _isSeeking = false;
                     });
                   }
@@ -101,7 +102,15 @@ class AudioManager {
       );
 
       if (currentTrack != null) {
-        final durationMs = audioPlayer.duration?.inMilliseconds;
+        int? durationMs = audioPlayer.duration?.inMilliseconds;
+        if (durationMs == null && state.processingState != ProcessingState.idle) {
+          int retries = 0;
+          while (durationMs == null && retries < 5) {
+            await Future.delayed(const Duration(milliseconds: 100));
+            durationMs = audioPlayer.duration?.inMilliseconds;
+            retries++;
+          }
+        }
         final positionMs = audioPlayer.position.inMilliseconds;
 
         try {
@@ -146,25 +155,32 @@ class AudioManager {
 
       if (_isSeeking) return;
 
-      final nowMs = DateTime.now().millisecondsSinceEpoch;
-      if (nowMs - _lastNotificationUpdateMs < _notificationThrottleMs) {
-        return;
-      }
-      _lastNotificationUpdateMs = nowMs;
-
       if (currentTrack != null) {
         try {
-          await AudoraNotification.show(
-            title: currentTrack!.title,
-            artist: currentTrack!.artist ?? 'Unknown Artist',
-            artworkUrl: currentTrack!.artUri?.toString(),
+          final durationMs = duration?.inMilliseconds;
+          await AudoraNotification.updatePlaybackState(
             isPlaying: audioPlayer.playing,
             positionMs: pos.inMilliseconds,
-            durationMs: duration?.inMilliseconds,
-            hasBestPart: hasBestPart(),
+            durationMs: durationMs,
           );
+
+          final nowMs = DateTime.now().millisecondsSinceEpoch;
+          if (nowMs - _lastNotificationUpdateMs >=
+              _notificationThrottleMs * 3) {
+            await AudoraNotification.show(
+              title: currentTrack!.title,
+              artist: currentTrack!.artist ?? 'Unknown Artist',
+              artworkUrl: currentTrack!.artUri?.toString(),
+              isPlaying: audioPlayer.playing,
+              positionMs: pos.inMilliseconds,
+              durationMs: durationMs,
+              hasBestPart: hasBestPart(),
+              mediaId: currentTrack!.id,
+            );
+            _lastNotificationUpdateMs = nowMs;
+          }
         } catch (e, st) {
-          log.d('[ERROR] AudoraNotification.show failed on positionStream: $e');
+          log.d('[ERROR] AudoraNotification failed on positionStream: $e');
           log.d(st);
         }
       }
@@ -214,25 +230,51 @@ class AudioManager {
 
       if (_currentPlayingVideoId != requestedVideoId) return;
 
-      String url;
-
-      if (_urlCache.containsKey(requestedVideoId)) {
-        url = _urlCache[requestedVideoId]!;
+      if (Downloads.isDownloaded(requestedVideoId)) {
+        final downloadedTrack = Downloads.get(requestedVideoId);
+        if (downloadedTrack != null) {
+          final audioFile = File(downloadedTrack.audioPath);
+          if (await audioFile.exists()) {
+            await audioPlayer.setAudioSource(AudioSource.file(audioFile.path));
+            if (_currentPlayingVideoId != requestedVideoId) return;
+          } else {
+            await Downloads.remove(requestedVideoId);
+            return;
+          }
+        } else {
+          return;
+        }
       } else {
-        final fetched = await player.getAudioUrlExplode(requestedVideoId);
+        String url;
+
+        if (_urlCache.containsKey(requestedVideoId)) {
+          url = _urlCache[requestedVideoId]!;
+        } else {
+          final fetched = await player.getAudioUrlExplode(requestedVideoId);
+          if (_currentPlayingVideoId != requestedVideoId) return;
+          if (fetched == null) return;
+          url = fetched;
+          _urlCache[requestedVideoId] = url;
+        }
+
+        await audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(url)));
         if (_currentPlayingVideoId != requestedVideoId) return;
-        if (fetched == null) return;
-        url = fetched;
-        _urlCache[requestedVideoId] = url;
       }
 
-      await audioPlayer.setAudioSource(AudioSource.uri(Uri.parse(url)));
-      if (_currentPlayingVideoId != requestedVideoId) return;
-
       isFetchingNotifier.value = false;
+      
+      int retries = 0;
+      int? durationMs;
+      while (durationMs == null && retries < 10) {
+        durationMs = audioPlayer.duration?.inMilliseconds;
+        if (durationMs == null) {
+          await Future.delayed(const Duration(milliseconds: 100));
+          retries++;
+        }
+      }
+      
       audioPlayer.play();
 
-      final durationMs = audioPlayer.duration?.inMilliseconds;
       final positionMs = audioPlayer.position.inMilliseconds;
 
       try {
@@ -447,5 +489,108 @@ class AudioManager {
       _currentIndex = index;
       playTrack(_queue[index], fromQueue: true);
     }
+  }
+
+  void addToQueue(Track track) {
+    if (_queue.any((t) => t.videoId == track.videoId)) return;
+    _queue.add(track);
+    queueNotifier.value = List.from(_queue);
+  }
+
+  void playNext(Track track) {
+    if (_queue.any((t) => t.videoId == track.videoId)) {
+      final existingIndex = _queue.indexWhere(
+        (t) => t.videoId == track.videoId,
+      );
+      if (existingIndex <= _currentIndex) return;
+      _queue.removeAt(existingIndex);
+    }
+    final insertIndex = _currentIndex >= 0 ? _currentIndex + 1 : 0;
+    if (insertIndex >= _queue.length) {
+      _queue.add(track);
+    } else {
+      _queue.insert(insertIndex, track);
+      if (_currentIndex >= 0 && insertIndex <= _currentIndex) {
+        _currentIndex++;
+      }
+    }
+    queueNotifier.value = List.from(_queue);
+  }
+
+  void shuffle() {
+    if (_queue.isEmpty || _currentIndex < 0) return;
+
+    final currentTrack = _queue[_currentIndex];
+    final remainingTracks = List<Track>.from(_queue)..removeAt(_currentIndex);
+
+    if (remainingTracks.isEmpty) return;
+
+    final shuffled = <Track>[currentTrack];
+    final random = DateTime.now().millisecondsSinceEpoch;
+    var seed = random;
+
+    while (remainingTracks.isNotEmpty) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      final weightedIndex = (seed % remainingTracks.length).abs();
+      final nextIndex = _calculateShuffleIndex(
+        remainingTracks.length,
+        weightedIndex,
+        shuffled.length,
+      );
+      shuffled.add(remainingTracks.removeAt(nextIndex));
+    }
+
+    _queue = shuffled;
+    _currentIndex = 0;
+    queueNotifier.value = List.from(_queue);
+
+    playTrack(shuffled[0], fromQueue: true);
+  }
+
+  int _calculateShuffleIndex(
+    int remainingCount,
+    int rawIndex,
+    int playedCount,
+  ) {
+    if (remainingCount <= 1) return 0;
+
+    final recentPenalty = playedCount < 5 ? 0.0 : 0.15;
+    final spreadFactor = 1.0 - recentPenalty;
+
+    final adjustedIndex = (rawIndex * spreadFactor).round();
+    return adjustedIndex.clamp(0, remainingCount - 1);
+  }
+
+  void setSleepTimer(Duration duration) {
+    _sleepTimer?.cancel();
+    sleepTimerNotifier.value = duration;
+
+    _sleepTimer = Timer(duration, () {
+      audioPlayer.pause();
+      sleepTimerNotifier.value = null;
+      _sleepTimer = null;
+    });
+
+    Timer.periodic(const Duration(seconds: 1), (timer) {
+      if (_sleepTimer == null || !_sleepTimer!.isActive) {
+        timer.cancel();
+        sleepTimerNotifier.value = null;
+        return;
+      }
+
+      final remaining = duration - Duration(seconds: timer.tick);
+      if (remaining <= Duration.zero) {
+        timer.cancel();
+        sleepTimerNotifier.value = null;
+      } else {
+        sleepTimerNotifier.value = remaining;
+      }
+    });
+  }
+
+  void cancelSleepTimer() {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    sleepTimerNotifier.value = null;
   }
 }

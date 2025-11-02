@@ -80,4 +80,51 @@ class SpotifyApi {
     }
     return out;
   }
+
+  Future<List<Map<String, dynamic>>> searchTracks(
+    String query, {
+    int limit = 20,
+  }) async {
+    final token = await _getAccessToken();
+    final uri = Uri.parse(
+      'https://api.spotify.com/v1/search?q=${Uri.encodeComponent(query)}&type=track&limit=${limit.clamp(1, 50)}',
+    );
+
+    final res = await http.get(
+      uri,
+      headers: {'Authorization': 'Bearer $token', 'Accept': 'application/json'},
+    );
+
+    if (res.statusCode != 200) {
+      return [];
+    }
+
+    final data = jsonDecode(res.body) as Map<String, dynamic>;
+    final tracksData = data['tracks'] as Map<String, dynamic>?;
+    final items = (tracksData?['items'] as List?)?.cast<Map>() ?? [];
+
+    final List<Map<String, dynamic>> out = [];
+
+    for (final item in items) {
+      final name = (item['name'] ?? '').toString();
+      final artists = ((item['artists'] as List?) ?? const [])
+          .map((a) => (a as Map)['name'])
+          .join(', ');
+      final album = (item['album'] as Map?) ?? const {};
+      final images = ((album['images'] as List?) ?? const []).cast<Map>();
+      String? imageUrl;
+      if (images.isNotEmpty) {
+        imageUrl = (images.first['url'] as String?);
+      }
+      final durMs = (item['duration_ms'] as int?) ?? 0;
+      out.add({
+        'title': name,
+        'artists': artists,
+        'durationSec': (durMs / 1000).round(),
+        'albumArt': imageUrl,
+      });
+    }
+
+    return out;
+  }
 }

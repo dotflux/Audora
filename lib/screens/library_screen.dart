@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import '../data/custom_playlists.dart';
 import 'package:audora/audora_music.dart';
 import 'dart:io';
+import 'package:http/http.dart' as http;
+import 'package:path_provider/path_provider.dart';
 import '../widgets/default_playlist_art.dart';
 import '../repository/spotify/spotify_api.dart';
 import '../repository/spotify/spotify_import.dart';
-import 'package:flutter_svg/flutter_svg.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Future<void> Function(Track, {List<Track>? queue}) playTrack;
@@ -35,6 +36,65 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadPlaylists();
   }
 
+
+  Future<void> _showImportOptions() async {
+    final option = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: const Color(0xFF181818),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        title: const Text(
+          'Import Playlist',
+          style: TextStyle(color: Colors.white),
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.music_note, color: Colors.white),
+              title: const Text(
+                'Import from Spotify',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(context, 'spotify'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+            const SizedBox(height: 8),
+            ListTile(
+              leading: const Icon(Icons.play_circle_outline, color: Colors.white),
+              title: const Text(
+                'Import from YouTube',
+                style: TextStyle(color: Colors.white),
+              ),
+              onTap: () => Navigator.pop(context, 'youtube'),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(8),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              'Cancel',
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+        ],
+      ),
+    );
+
+    if (option == 'spotify') {
+      await _importSpotify();
+    } else if (option == 'youtube') {
+      await _importYouTube();
+    }
+  }
 
   Future<void> _importSpotify() async {
     final controller = TextEditingController();
@@ -192,6 +252,141 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadPlaylists();
   }
 
+  Future<void> _importYouTube() async {
+    final controller = TextEditingController();
+
+    final playlistIdOrUrl = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: Colors.black,
+        title: const Text(
+          "Import from YouTube",
+          style: TextStyle(color: Colors.white),
+        ),
+        content: TextField(
+          controller: controller,
+          style: const TextStyle(color: Colors.white),
+          decoration: const InputDecoration(
+            hintText: "Paste playlist ID or URL",
+            hintStyle: TextStyle(color: Colors.white54),
+            enabledBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white24),
+            ),
+            focusedBorder: UnderlineInputBorder(
+              borderSide: BorderSide(color: Colors.white),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              "Cancel",
+              style: TextStyle(color: Colors.white54),
+            ),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, controller.text.trim()),
+            child: const Text("Import", style: TextStyle(color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+
+    if (playlistIdOrUrl == null || playlistIdOrUrl.isEmpty) return;
+
+    String? playlistId;
+    if (playlistIdOrUrl.contains('list=')) {
+      final match = RegExp(r'list=([A-Za-z0-9_-]+)').firstMatch(playlistIdOrUrl);
+      playlistId = match?.group(1);
+    } else {
+      playlistId = playlistIdOrUrl;
+    }
+
+    if (playlistId == null || playlistId.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Invalid YouTube playlist ID or URL')),
+      );
+      return;
+    }
+
+    if (mounted) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Import started...')));
+    }
+
+    final progressKey = GlobalKey<_ProgressDialogState>();
+    int done = 0;
+    int total = 0;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => _ProgressDialog(
+        key: progressKey,
+        done: done,
+        total: total,
+      ),
+    );
+
+    try {
+      final client = AudoraClient();
+      final search = AudoraSearch(client);
+      final tracks = await search.fetchPlaylist(playlistId, limit: 200);
+
+      if (tracks.isEmpty) {
+        if (mounted) Navigator.of(context).pop();
+        if (!mounted) return;
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('No tracks found in playlist')));
+        return;
+      }
+
+      total = tracks.length;
+      progressKey.currentState?.update(done, total);
+
+      final playlistName = 'YouTube Playlist ${DateTime.now().millisecondsSinceEpoch}';
+      await CustomPlaylists.createPlaylist(playlistName);
+
+      if (tracks.isNotEmpty && tracks[0].thumbnail != null) {
+        try {
+          final coverUrl = tracks[0].thumbnail!;
+          final response = await http.get(Uri.parse(coverUrl));
+          if (response.statusCode == 200) {
+            final appDir = await getApplicationDocumentsDirectory();
+            final coverPath = '${appDir.path}/cover_$playlistName.jpg';
+            final file = File(coverPath);
+            await file.writeAsBytes(response.bodyBytes);
+            await CustomPlaylists.setCoverImage(playlistName, coverPath);
+          }
+        } catch (_) {}
+      }
+
+      for (final track in tracks) {
+        await CustomPlaylists.addTrack(playlistName, track);
+        done++;
+        progressKey.currentState?.update(done, total);
+        await Future.delayed(const Duration(milliseconds: 50));
+      }
+
+      if (!mounted) return;
+      Navigator.of(context).pop();
+      _loadPlaylists();
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('Import completed')));
+    } catch (e) {
+      if (mounted) Navigator.of(context).pop();
+      if (!mounted) return;
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Import failed: $e')));
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -218,9 +413,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ),
         actions: [
           IconButton(
-            onPressed: _importSpotify,
-            icon: SvgPicture.asset("assets/icon/spotify.svg"),
-            tooltip: "Import Spotify playlist",
+            onPressed: _showImportOptions,
+            icon: const Icon(Icons.download, color: Colors.white),
+            tooltip: "Import playlist",
           ),
           IconButton(
             onPressed: _createPlaylist,
