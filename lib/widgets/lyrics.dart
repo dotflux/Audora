@@ -64,6 +64,17 @@ class _LyricsWidgetState extends State<LyricsWidget> {
     }
   }
 
+  @override
+  void didUpdateWidget(covariant LyricsWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.track.videoId != widget.track.videoId) {
+      _lines = [];
+      _error = '';
+      _isLoading = true;
+      _fetchLyrics();
+    }
+  }
+
   Future<void> _fetchLyrics() async {
     setState(() {
       _isLoading = true;

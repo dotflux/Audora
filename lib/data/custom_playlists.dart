@@ -79,7 +79,10 @@ class CustomPlaylists {
   static Future<bool> addTrack(String playlistName, Track track) async {
     if (!_box.containsKey(playlistName)) return false;
     final data = Map<String, dynamic>.from(_box.get(playlistName));
-    final List existingJson = List<Map<String, dynamic>>.from(data['tracks']);
+    final List<Map<String, dynamic>> existingJson = (data['tracks'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        <Map<String, dynamic>>[];
 
     if (existingJson.any((t) => t['videoId'] == track.videoId)) return false;
 
@@ -92,7 +95,10 @@ class CustomPlaylists {
   static Future<void> removeTrack(String playlistName, String videoId) async {
     if (!_box.containsKey(playlistName)) return;
     final data = Map<String, dynamic>.from(_box.get(playlistName));
-    final List existingJson = List<Map<String, dynamic>>.from(data['tracks']);
+    final List<Map<String, dynamic>> existingJson = (data['tracks'] as List?)
+            ?.map((e) => Map<String, dynamic>.from(e as Map))
+            .toList() ??
+        <Map<String, dynamic>>[];
     existingJson.removeWhere((t) => t['videoId'] == videoId);
     data['tracks'] = existingJson;
     await _box.put(playlistName, data);

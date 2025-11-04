@@ -6,6 +6,7 @@ import '../widgets/track_options_menu.dart';
 import 'dart:io';
 import 'package:image_picker/image_picker.dart';
 import '../widgets/default_playlist_art.dart';
+import '../widgets/add_to_playlist.dart';
 
 class PlaylistScreen extends StatefulWidget {
   final String id;
@@ -36,6 +37,7 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
   int _loadedCount = 0;
   bool _isLoadingMore = false;
   int _totalCount = 0;
+  bool _shuffleMode = false;
 
   @override
   void initState() {
@@ -373,6 +375,40 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
     setState(() => _tracks.removeWhere((t) => t.videoId == videoId));
   }
 
+  List<Track> _createShuffledOrder(List<Track> list, {Track? start}) {
+    if (list.isEmpty) return [];
+    final seedBase = DateTime.now().millisecondsSinceEpoch;
+    final startTrack = start ?? list.first;
+    final remaining = List<Track>.from(list)
+      ..removeWhere((t) => t.videoId == startTrack.videoId);
+    final shuffled = <Track>[startTrack];
+    var seed = seedBase;
+    while (remaining.isNotEmpty) {
+      seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+      final idx = (seed % remaining.length).abs();
+      shuffled.add(remaining.removeAt(idx));
+    }
+    return shuffled;
+  }
+
+  Future<void> _applyShuffleAndPlay({Track? start}) async {
+    if (_tracks.isEmpty) return;
+    final base = widget.isCustom
+        ? (_allTracks.isNotEmpty ? _allTracks : _tracks)
+        : _tracks;
+    final order = _createShuffledOrder(base, start: start);
+    if (widget.isCustom) {
+      await CustomPlaylists.setTracks(widget.id, order);
+      _allTracks = order;
+      _loadedCount = order.length < _loadedCount ? order.length : _loadedCount;
+      _tracks = _allTracks.take(_loadedCount).toList();
+      setState(() {});
+      await widget.audioManager.playTrack(order[0], queue: order);
+      return;
+    }
+    await widget.audioManager.playTrack(order[0], queue: order);
+  }
+
   @override
   Widget build(BuildContext context) {
     final customImage = CustomPlaylists.getCoverImage(widget.id);
@@ -497,6 +533,29 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                           )
                                         : null,
                                   ),
+                                  IconButton(
+                                    icon: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.shuffle,
+                                          color: _shuffleMode
+                                              ? Colors.blueAccent
+                                              : Colors.white70,
+                                        ),
+                                      ],
+                                    ),
+                                    onPressed: _tracks.isEmpty
+                                        ? null
+                                        : () async {
+                                            setState(
+                                              () =>
+                                                  _shuffleMode = !_shuffleMode,
+                                            );
+                                            if (_shuffleMode)
+                                              await _applyShuffleAndPlay();
+                                          },
+                                  ),
                                   if (widget.isCustom)
                                     IconButton(
                                       icon: const Icon(
@@ -535,8 +594,18 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                   itemBuilder: (context, i) {
                                     final track = _tracks[i];
                                     return ListTile(
-                                      onTap: () => widget.audioManager
-                                          .playTrack(track, queue: _tracks),
+                                      onTap: () async {
+                                        if (_shuffleMode) {
+                                          await _applyShuffleAndPlay(
+                                            start: track,
+                                          );
+                                          return;
+                                        }
+                                        await widget.audioManager.playTrack(
+                                          track,
+                                          queue: _tracks,
+                                        );
+                                      },
                                       leading: ClipRRect(
                                         borderRadius: BorderRadius.circular(8),
                                         child: track.thumbnail != null
@@ -581,34 +650,64 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
                                                     Icons.more_vert,
                                                     color: Colors.white70,
                                                   ),
-                                                  onPressed: () => TrackOptionsMenu.show(
-                                                    context: context,
-                                                    track: track,
-                                                    audioManager: widget.audioManager,
-                                                    showAddToPlaylist: false,
-                                                  ),
+                                                  onPressed: () =>
+                                                      TrackOptionsMenu.show(
+                                                        context: context,
+                                                        track: track,
+                                                        audioManager:
+                                                            widget.audioManager,
+                                                        showAddToPlaylist:
+                                                            false,
+                                                      ),
                                                 ),
                                                 IconButton(
                                                   icon: const Icon(
                                                     Icons.delete_outline,
                                                     color: Colors.redAccent,
                                                   ),
-                                                  onPressed: () =>
-                                                      _removeTrack(track.videoId),
+                                                  onPressed: () => _removeTrack(
+                                                    track.videoId,
+                                                  ),
                                                 ),
                                               ],
                                             )
-                                          : IconButton(
-                                              icon: const Icon(
-                                                Icons.more_vert,
-                                                color: Colors.white70,
-                                              ),
-                                              onPressed: () => TrackOptionsMenu.show(
-                                                context: context,
-                                                track: track,
-                                                audioManager: widget.audioManager,
-                                                showAddToPlaylist: false,
-                                              ),
+                                          : Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.playlist_add,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  onPressed: () =>
+                                                      showModalBottomSheet(
+                                                        context: context,
+                                                        isScrollControlled:
+                                                            true,
+                                                        backgroundColor:
+                                                            Colors.transparent,
+                                                        builder: (_) =>
+                                                            AddToPlaylistDialog(
+                                                              track: track,
+                                                            ),
+                                                      ),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                    Icons.more_vert,
+                                                    color: Colors.white70,
+                                                  ),
+                                                  onPressed: () =>
+                                                      TrackOptionsMenu.show(
+                                                        context: context,
+                                                        track: track,
+                                                        audioManager:
+                                                            widget.audioManager,
+                                                        showAddToPlaylist:
+                                                            false,
+                                                      ),
+                                                ),
+                                              ],
                                             ),
                                     );
                                   },

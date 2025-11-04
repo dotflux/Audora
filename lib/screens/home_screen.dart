@@ -37,6 +37,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final PageController _pageController = PageController(viewportFraction: 0.75);
   Timer? _autoScrollTimer;
   StreamSubscription? _recentlyPlayedSub;
+  bool _loadingMoreSections = false;
 
   @override
   void initState() {
@@ -48,7 +49,7 @@ class _HomeScreenState extends State<HomeScreen> {
             const Duration(minutes: 10)) {
       allChartsFuture = Future.value(_cachedCharts);
     } else {
-      allChartsFuture = _fetchAndCacheCharts(forceRefresh: true);
+      allChartsFuture = _fetchAndCacheCharts(forceRefresh: false);
     }
 
     recentlyPlayedFuture = RecentlyPlayed.getTracks();
@@ -90,37 +91,52 @@ class _HomeScreenState extends State<HomeScreen> {
 
     try {
       final topFuture = charts.fetchGlobalTopCharts();
-
-      final countryFutures = countryCodes.entries.map((entry) async {
-        try {
-          final tracks = await charts.fetchTrendingTracks(
-            countryCode: entry.value,
-          );
-          return MapEntry(entry.key, tracks);
-        } catch (_) {
-          return MapEntry(entry.key, <Track>[]);
-        }
-      });
-
-      final genreFutures = genres.map((entry) async {
-        try {
-          final tracks = await widget.search.fetchGenreSongs(entry);
-          return MapEntry(entry, tracks);
-        } catch (_) {
-          return MapEntry(entry, <Track>[]);
-        }
-      });
-
-      final results = await Future.wait([...countryFutures, ...genreFutures]);
       final topTracks = await topFuture;
 
-      final data = {'Top Charts': topTracks, ...Map.fromEntries(results)};
-      _cachedCharts = data;
+      final partial = {'Top Charts': topTracks};
+      _cachedCharts = partial;
       _lastFetchTime = DateTime.now();
+      if (mounted) setState(() => _loadingMoreSections = true);
 
-      return data;
+      Future.microtask(() async {
+        final countryFutures = countryCodes.entries.map((entry) async {
+          try {
+            final tracks = await charts.fetchTrendingTracks(
+              countryCode: entry.value,
+            );
+            return MapEntry(entry.key, tracks);
+          } catch (_) {
+            return MapEntry(entry.key, <Track>[]);
+          }
+        });
+
+        final genreFutures = genres.map((entry) async {
+          try {
+            final tracks = await widget.search.fetchGenreSongs(entry);
+            return MapEntry(entry, tracks);
+          } catch (_) {
+            return MapEntry(entry, <Track>[]);
+          }
+        });
+
+        try {
+          final results = await Future.wait([
+            ...countryFutures,
+            ...genreFutures,
+          ]);
+          final full = {'Top Charts': topTracks, ...Map.fromEntries(results)};
+          _cachedCharts = full;
+          _lastFetchTime = DateTime.now();
+          if (mounted) setState(() => _loadingMoreSections = false);
+        } catch (_) {
+          if (mounted) setState(() => _loadingMoreSections = false);
+        }
+      });
+
+      return partial;
     } catch (e) {
       debugPrint("⚠️ Chart fetch error: $e");
+      if (mounted) setState(() => _loadingMoreSections = false);
       return _cachedCharts ?? {};
     }
   }
@@ -191,7 +207,7 @@ class _HomeScreenState extends State<HomeScreen> {
       body: FutureBuilder<Map<String, List<Track>>>(
         future: allChartsFuture,
         builder: (context, snapshot) {
-          final charts = snapshot.data ?? _cachedCharts ?? {};
+          final charts = _cachedCharts ?? snapshot.data ?? {};
           if (snapshot.connectionState == ConnectionState.waiting &&
               charts.isEmpty) {
             return const Center(
@@ -229,7 +245,7 @@ class _HomeScreenState extends State<HomeScreen> {
               physics: const AlwaysScrollableScrollPhysics(),
               child: Padding(
                 padding: const EdgeInsets.fromLTRB(12, 12, 12, 120),
-                  child: Column(
+                child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Row(
@@ -293,8 +309,23 @@ class _HomeScreenState extends State<HomeScreen> {
                         ),
                       ),
                       const SizedBox(height: 12),
-                      _buildHorizontalList(entry.value),
+                      entry.value.isEmpty && _loadingMoreSections
+                          ? const SizedBox(
+                              height: 80,
+                              child: Center(
+                                child: CircularProgressIndicator(
+                                  color: Colors.white,
+                                ),
+                              ),
+                            )
+                          : _buildHorizontalList(entry.value),
                       const SizedBox(height: 24),
+                    ],
+                    if (_loadingMoreSections && others.isEmpty) ...[
+                      const SizedBox(height: 12),
+                      const Center(
+                        child: CircularProgressIndicator(color: Colors.white),
+                      ),
                     ],
                   ],
                 ),
@@ -516,7 +547,9 @@ class _HomeScreenState extends State<HomeScreen> {
                             ),
                             const SizedBox(height: 6),
                             Text(
-                              track.artist.isNotEmpty ? track.artist : "Unknown Artist",
+                              track.artist.isNotEmpty
+                                  ? track.artist
+                                  : "Unknown Artist",
                               textAlign: TextAlign.center,
                               style: const TextStyle(
                                 color: Colors.white70,
@@ -590,7 +623,9 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                               const SizedBox(height: 6),
                               Text(
-                                track.artist.isNotEmpty ? track.artist : "Unknown Artist",
+                                track.artist.isNotEmpty
+                                    ? track.artist
+                                    : "Unknown Artist",
                                 textAlign: TextAlign.center,
                                 style: const TextStyle(
                                   color: Colors.white70,

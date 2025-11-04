@@ -8,6 +8,7 @@ class AudoraNotification {
   static const MethodChannel _channel = MethodChannel('audora/notification');
 
   static NotificationActionCallback? onAction;
+  static bool _supportsUpdatePlayback = true;
 
   static void init() {
     _channel.setMethodCallHandler((call) async {
@@ -57,10 +58,15 @@ class AudoraNotification {
     int? positionMs,
     int? durationMs,
   }) async {
-    await _channel.invokeMethod('updatePlaybackState', {
-      'isPlaying': isPlaying,
-      'positionMs': positionMs,
-      'durationMs': durationMs,
-    });
+    if (!_supportsUpdatePlayback) return;
+    try {
+      await _channel.invokeMethod('updatePlaybackState', {
+        'isPlaying': isPlaying,
+        'positionMs': positionMs,
+        'durationMs': durationMs,
+      });
+    } on MissingPluginException {
+      _supportsUpdatePlayback = false;
+    }
   }
 }

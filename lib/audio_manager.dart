@@ -7,6 +7,7 @@ import 'dart:async';
 import 'dart:io';
 import '/data/recently_played.dart';
 import '/data/track_best_parts.dart';
+import '/data/track_loop_after.dart';
 import '/data/downloads.dart';
 import 'audora_notification.dart';
 
@@ -68,18 +69,19 @@ class AudioManager {
                   final target = Duration(milliseconds: positionMs);
                   if (target <= audioPlayer.duration!) {
                     _isSeeking = true;
-                    
+
                     final durationMs = audioPlayer.duration?.inMilliseconds;
-                    
+
                     await AudoraNotification.updatePlaybackState(
                       isPlaying: audioPlayer.playing,
                       positionMs: positionMs,
                       durationMs: durationMs,
                     );
-                    
+
                     await audioPlayer.seek(target);
 
-                    _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
+                    _lastNotificationUpdateMs =
+                        DateTime.now().millisecondsSinceEpoch;
 
                     Future.delayed(const Duration(milliseconds: 1200), () {
                       _isSeeking = false;
@@ -103,7 +105,8 @@ class AudioManager {
 
       if (currentTrack != null) {
         int? durationMs = audioPlayer.duration?.inMilliseconds;
-        if (durationMs == null && state.processingState != ProcessingState.idle) {
+        if (durationMs == null &&
+            state.processingState != ProcessingState.idle) {
           int retries = 0;
           while (durationMs == null && retries < 5) {
             await Future.delayed(const Duration(milliseconds: 100));
@@ -122,6 +125,7 @@ class AudioManager {
             positionMs: positionMs,
             durationMs: durationMs,
             hasBestPart: hasBestPart(),
+            mediaId: currentTrack!.id,
           );
 
           _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
@@ -147,6 +151,22 @@ class AudioManager {
     audioPlayer.positionStream.listen((pos) async {
       final duration = audioPlayer.duration;
 
+      if (_loopMode != LoopMode.off && _currentPlayingVideoId != null) {
+        final loopAfterMs = TrackLoopAfter.getLoopAfter(
+          _currentPlayingVideoId!,
+        );
+        if (loopAfterMs != null && pos.inMilliseconds >= loopAfterMs) {
+          final bestPartMs = TrackBestParts.getBestPart(
+            _currentPlayingVideoId!,
+          );
+          final seekTarget = bestPartMs != null
+              ? Duration(milliseconds: bestPartMs)
+              : Duration.zero;
+          await audioPlayer.seek(seekTarget);
+          return;
+        }
+      }
+
       if (duration != null &&
           pos >= duration - const Duration(milliseconds: 500)) {
         log.d("Detected natural end of track!");
@@ -158,24 +178,17 @@ class AudioManager {
       if (currentTrack != null) {
         try {
           final durationMs = duration?.inMilliseconds;
-          await AudoraNotification.updatePlaybackState(
-            isPlaying: audioPlayer.playing,
-            positionMs: pos.inMilliseconds,
-            durationMs: durationMs,
-          );
-
           final nowMs = DateTime.now().millisecondsSinceEpoch;
-          if (nowMs - _lastNotificationUpdateMs >=
-              _notificationThrottleMs * 3) {
-            await AudoraNotification.show(
-              title: currentTrack!.title,
-              artist: currentTrack!.artist ?? 'Unknown Artist',
-              artworkUrl: currentTrack!.artUri?.toString(),
+
+          final shouldUpdate =
+              nowMs - _lastNotificationUpdateMs >= _notificationThrottleMs ||
+              (pos.inMilliseconds % 5000 < 100);
+
+          if (shouldUpdate) {
+            await AudoraNotification.updatePlaybackState(
               isPlaying: audioPlayer.playing,
               positionMs: pos.inMilliseconds,
               durationMs: durationMs,
-              hasBestPart: hasBestPart(),
-              mediaId: currentTrack!.id,
             );
             _lastNotificationUpdateMs = nowMs;
           }
@@ -223,6 +236,22 @@ class AudioManager {
       artUri: track.thumbnail != null ? Uri.parse(track.thumbnail!) : null,
     );
     currentTrackNotifier.value = currentTrack;
+
+    try {
+      await AudoraNotification.show(
+        title: track.title,
+        artist: track.artist,
+        artworkUrl: track.thumbnail,
+        isPlaying: false,
+        positionMs: 0,
+        durationMs: null,
+        hasBestPart: hasBestPart(),
+        mediaId: track.videoId,
+      );
+    } catch (e, st) {
+      log.d('[ERROR] AudoraNotification.show failed at track start: $e');
+    }
+
     isFetchingNotifier.value = true;
 
     try {
@@ -262,7 +291,7 @@ class AudioManager {
       }
 
       isFetchingNotifier.value = false;
-      
+
       int retries = 0;
       int? durationMs;
       while (durationMs == null && retries < 10) {
@@ -272,7 +301,7 @@ class AudioManager {
           retries++;
         }
       }
-      
+
       audioPlayer.play();
 
       final positionMs = audioPlayer.position.inMilliseconds;
@@ -286,6 +315,7 @@ class AudioManager {
           positionMs: positionMs,
           durationMs: durationMs,
           hasBestPart: hasBestPart(),
+          mediaId: track.videoId,
         );
         _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
       } catch (e, st) {

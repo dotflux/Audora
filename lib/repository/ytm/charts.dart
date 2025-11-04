@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'package:http/http.dart' as http;
 import 'track.dart';
 import 'client.dart';
@@ -24,16 +25,34 @@ class AudoraCharts {
     );
   }
 
+  Future<List<Track>> fetchTopShortsDaily() async {
+    return _fetchCharts(
+      chartType: 'TRACKS',
+      chartId: 'TopShortsSongs',
+      countryCode: 'US',
+      isGlobal: true,
+      periodType: 'DAILY',
+    );
+  }
+
   Future<List<Track>> _fetchCharts({
     required String chartType,
     required String chartId,
     required String countryCode,
     bool isGlobal = false,
+    String periodType = 'WEEKLY',
   }) async {
     final keySource = isGlobal ? 'US' : countryCode;
-    final response = await http.get(
-      Uri.parse('https://charts.youtube.com/charts/TrendingVideos/$keySource'),
-    );
+    final response = await http
+        .get(
+          Uri.parse(
+            'https://charts.youtube.com/charts/TrendingVideos/$keySource',
+          ),
+        )
+        .timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => http.Response('', 408),
+        );
 
     final keyRegex = RegExp(r'"INNERTUBE_API_KEY"\s*:\s*"(.*?)"');
     final apiKey = keyRegex.firstMatch(response.body)?.group(1);
@@ -43,7 +62,7 @@ class AudoraCharts {
       'perspective=CHART_DETAILS',
       'chart_params_chart_type=$chartType',
       'chart_params_chart_id=$chartId',
-      'chart_params_period_type=WEEKLY',
+      'chart_params_period_type=$periodType',
       if (!isGlobal) 'chart_params_country_code=$countryCode',
     ].join('&');
 
@@ -61,17 +80,22 @@ class AudoraCharts {
       "query": queryParams,
     };
 
-    final chartResponse = await http.post(
-      Uri.parse(
-        'https://charts.youtube.com/youtubei/v1/browse?alt=json&key=$apiKey',
-      ),
-      headers: {
-        'Referer':
-            'https://charts.youtube.com/charts/TrendingVideos/$keySource',
-        'Content-Type': 'application/json',
-      },
-      body: jsonEncode(data),
-    );
+    final chartResponse = await http
+        .post(
+          Uri.parse(
+            'https://charts.youtube.com/youtubei/v1/browse?alt=json&key=$apiKey',
+          ),
+          headers: {
+            'Referer':
+                'https://charts.youtube.com/charts/TrendingVideos/$keySource',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(data),
+        )
+        .timeout(
+          const Duration(seconds: 10),
+          onTimeout: () => http.Response('', 408),
+        );
 
     if (chartResponse.statusCode != 200) {
       throw Exception('Failed to load charts: ${chartResponse.statusCode}');
@@ -84,7 +108,7 @@ class AudoraCharts {
 
     final List<Track> tracks = [];
 
-    for (var item in trackViews.take(20)) {
+    for (var item in trackViews.take(12)) {
       final title = item['name'] ?? 'Unknown Title';
       String thumbnail = '';
       try {

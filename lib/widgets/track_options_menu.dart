@@ -28,74 +28,39 @@ class TrackOptionsMenu extends StatelessWidget {
     bool showAddToPlaylist = true,
     MediaItem? currentMediaItem,
   }) {
-    final media = currentMediaItem ?? audioManager.currentTrackNotifier.value;
     showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
-      isScrollControlled: true,
+      isScrollControlled: false,
       builder: (context) {
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            if (media?.artUri != null)
-              Positioned.fill(
-                child: media!.artUri!.scheme == 'file'
-                    ? Image.file(
-                        File(media!.artUri!.path),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF181818)),
-                      )
-                    : Image.network(
-                        media!.artUri!.toString(),
-                        fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => Container(color: const Color(0xFF181818)),
-                      ),
-              )
-            else
-              Positioned.fill(
-                child: Container(color: const Color(0xFF181818)),
-              ),
-            Positioned.fill(
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
-                child: Container(color: const Color.fromRGBO(0, 0, 0, 0.85)),
-              ),
+        return SafeArea(
+          child: Container(
+            decoration: const BoxDecoration(
+              color: Color(0xFF181818),
+              borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
             ),
-            SafeArea(
-              child: Container(
-                decoration: const BoxDecoration(
-                  color: Colors.transparent,
-                  borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  margin: const EdgeInsets.only(top: 12, bottom: 8),
+                  width: 40,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.white24,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
                 ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    GestureDetector(
-                      onVerticalDragUpdate: (details) {
-                        Navigator.of(context).pop();
-                      },
-                      child: Container(
-                        margin: const EdgeInsets.only(top: 12, bottom: 8),
-                        width: 40,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: Colors.white24,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    TrackOptionsMenu(
-                      track: track,
-                      audioManager: audioManager,
-                      mediaItem: mediaItem,
-                      showAddToPlaylist: showAddToPlaylist,
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                TrackOptionsMenu(
+                  track: track,
+                  audioManager: audioManager,
+                  mediaItem: mediaItem,
+                  showAddToPlaylist: showAddToPlaylist,
                 ),
-              ),
+                const SizedBox(height: 8),
+              ],
             ),
-          ],
+          ),
         );
       },
     );

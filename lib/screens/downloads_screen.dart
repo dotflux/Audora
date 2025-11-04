@@ -372,14 +372,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
-              value: progress.progress / 100.0,
               color: Colors.blue,
             ),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
-              '${progress.progress}% - ${progress.status}',
+              'Downloading..',
               style: TextStyle(
                 color: Colors.blue.withOpacity(0.8),
                 fontSize: 12,

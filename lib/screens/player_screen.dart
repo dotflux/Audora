@@ -14,9 +14,11 @@ import '../widgets/lyrics.dart';
 import '../widgets/track_image.dart';
 import '../audio_manager.dart';
 import '../data/track_best_parts.dart';
+import '../data/track_loop_after.dart';
 import '../data/downloads.dart';
 import '../data/download_progress.dart';
 import '../audora_music.dart';
+import '../widgets/add_to_playlist.dart';
 
 class PlayerScreen extends StatefulWidget {
   final AudioPlayer player;
@@ -128,111 +130,194 @@ class _PlayerScreenState extends State<PlayerScreen> {
             ),
           SafeArea(
             child: Container(
-              decoration: const BoxDecoration(
-                color: Colors.transparent,
-                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              constraints: BoxConstraints(
+                maxHeight: MediaQuery.of(context).size.height * 0.8,
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(
-                    margin: const EdgeInsets.only(top: 12, bottom: 8),
-                    width: 40,
-                    height: 4,
-                    decoration: BoxDecoration(
-                      color: Colors.white24,
-                      borderRadius: BorderRadius.circular(2),
-                    ),
-                  ),
-                  ListTile(
-                    leading: const Icon(Icons.loop, color: Colors.white70),
-                    title: const Text(
-                      'Set Best Part',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showSetBestPart();
-                    },
-                  ),
-                  if (media != null && TrackBestParts.hasBestPart(media!.id))
-                    ListTile(
-                      leading: const Icon(Icons.refresh, color: Colors.white70),
-                      title: const Text(
-                        'Reset Best Part',
-                        style: TextStyle(color: Colors.white),
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Container(
+                      margin: const EdgeInsets.only(top: 12, bottom: 8),
+                      width: 40,
+                      height: 4,
+                      decoration: BoxDecoration(
+                        color: Colors.white24,
+                        borderRadius: BorderRadius.circular(2),
                       ),
-                      onTap: () async {
-                        Navigator.pop(context);
-                        await TrackBestParts.resetBestPart(media!.id);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('Best part reset!'),
-                              duration: Duration(seconds: 2),
-                              backgroundColor: Colors.orange,
-                            ),
-                          );
-                        }
-                      },
                     ),
-                  ListTile(
-                    leading: const Icon(Icons.download, color: Colors.white70),
-                    title: const Text(
-                      'Download',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _downloadTrack();
-                    },
-                  ),
-                  ListTile(
-                    leading: const Icon(
-                      Icons.queue_music,
-                      color: Colors.white70,
-                    ),
-                    title: const Text(
-                      'Queue',
-                      style: TextStyle(color: Colors.white),
-                    ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _queueController.animateTo(
-                        0.5,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
-                    },
-                  ),
-                  if (media != null)
                     ListTile(
-                      leading: const Icon(Icons.lyrics, color: Colors.white70),
+                      leading: const Icon(Icons.loop, color: Colors.white70),
                       title: const Text(
-                        'Lyrics',
+                        'Set Best Part',
                         style: TextStyle(color: Colors.white),
                       ),
                       onTap: () {
                         Navigator.pop(context);
-                        _lyricsController.animateTo(
-                          0.5,
-                          duration: const Duration(milliseconds: 300),
-                          curve: Curves.easeOut,
-                        );
+                        _showSetBestPart();
                       },
                     ),
-                  ListTile(
-                    leading: const Icon(Icons.bedtime, color: Colors.white70),
-                    title: const Text(
-                      'Sleep Timer',
-                      style: TextStyle(color: Colors.white),
+                    if (media != null && TrackBestParts.hasBestPart(media!.id))
+                      ListTile(
+                        leading: const Icon(
+                          Icons.refresh,
+                          color: Colors.white70,
+                        ),
+                        title: const Text(
+                          'Reset Best Part',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await TrackBestParts.resetBestPart(media!.id);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Best part reset!'),
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.repeat_one,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Set Loop After',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showSetLoopAfter();
+                      },
                     ),
-                    onTap: () {
-                      Navigator.pop(context);
-                      _showSleepTimer();
-                    },
-                  ),
-                ],
+                    if (media != null && TrackLoopAfter.hasLoopAfter(media!.id))
+                      ListTile(
+                        leading: const Icon(
+                          Icons.refresh,
+                          color: Colors.white70,
+                        ),
+                        title: const Text(
+                          'Reset Loop After',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onTap: () async {
+                          Navigator.pop(context);
+                          await TrackLoopAfter.resetLoopAfter(media!.id);
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              const SnackBar(
+                                content: Text('Loop after reset!'),
+                                duration: Duration(seconds: 2),
+                                backgroundColor: Colors.orange,
+                              ),
+                            );
+                          }
+                        },
+                      ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.download,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Download',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _downloadTrack();
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.playlist_add,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Add to Playlist',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        if (media != null) {
+                          final track = Track(
+                            videoId: media!.id,
+                            title: media!.title,
+                            artist: media!.artist ?? '',
+                            thumbnail: media!.artUri?.toString(),
+                          );
+                          showModalBottomSheet(
+                            context: context,
+                            isScrollControlled: true,
+                            backgroundColor: Colors.transparent,
+                            builder: (_) => AddToPlaylistDialog(track: track),
+                          );
+                        }
+                      },
+                    ),
+                    ListTile(
+                      leading: const Icon(
+                        Icons.queue_music,
+                        color: Colors.white70,
+                      ),
+                      title: const Text(
+                        'Queue',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        WidgetsBinding.instance.addPostFrameCallback((_) {
+                          try {
+                            _queueController.animateTo(
+                              0.5,
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          } catch (_) {}
+                        });
+                      },
+                    ),
+                    if (media != null)
+                      ListTile(
+                        leading: const Icon(
+                          Icons.lyrics,
+                          color: Colors.white70,
+                        ),
+                        title: const Text(
+                          'Lyrics',
+                          style: TextStyle(color: Colors.white),
+                        ),
+                        onTap: () {
+                          Navigator.pop(context);
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            try {
+                              _lyricsController.animateTo(
+                                0.5,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            } catch (_) {}
+                          });
+                        },
+                      ),
+                    ListTile(
+                      leading: const Icon(Icons.bedtime, color: Colors.white70),
+                      title: const Text(
+                        'Sleep Timer',
+                        style: TextStyle(color: Colors.white),
+                      ),
+                      onTap: () {
+                        Navigator.pop(context);
+                        _showSleepTimer();
+                      },
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -638,6 +723,162 @@ class _PlayerScreenState extends State<PlayerScreen> {
                               ScaffoldMessenger.of(context).showSnackBar(
                                 const SnackBar(
                                   content: Text('Best part set!'),
+                                  duration: Duration(seconds: 2),
+                                  backgroundColor: Colors.green,
+                                ),
+                              );
+                            },
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.blue,
+                              foregroundColor: Colors.white,
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                            child: const Text(
+                              'Set',
+                              style: TextStyle(fontSize: 16),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _showSetLoopAfter() {
+    final videoId = media?.id;
+    if (videoId == null) return;
+
+    final currentPos = widget.player.position.inMilliseconds;
+    final duration = widget.player.duration?.inMilliseconds ?? 0;
+    int selectedMs = currentPos;
+
+    showDialog(
+      context: context,
+      barrierColor: Colors.black87,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => Dialog(
+          backgroundColor: Colors.transparent,
+          insetPadding: EdgeInsets.zero,
+          child: Stack(
+            children: [
+              if (media?.artUri != null)
+                Positioned.fill(
+                  child: Image.network(
+                    media!.artUri.toString(),
+                    fit: BoxFit.cover,
+                  ),
+                ),
+              if (media?.artUri != null)
+                Positioned.fill(
+                  child: BackdropFilter(
+                    filter: ImageFilter.blur(sigmaX: 32, sigmaY: 32),
+                    child: Container(color: const Color.fromRGBO(0, 0, 0, 0.7)),
+                  ),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Set Loop After',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 24,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      _formatDuration(Duration(milliseconds: selectedMs)),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 36,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 32),
+                    SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 4,
+                        thumbShape: const RoundSliderThumbShape(
+                          enabledThumbRadius: 10,
+                        ),
+                        overlayShape: const RoundSliderOverlayShape(
+                          overlayRadius: 20,
+                        ),
+                        activeTrackColor: Colors.blue,
+                        inactiveTrackColor: Colors.white24,
+                        thumbColor: Colors.blue,
+                      ),
+                      child: Slider(
+                        value: selectedMs.toDouble(),
+                        min: 0,
+                        max: duration > 0 ? duration.toDouble() : 1.0,
+                        onChanged: (v) {
+                          setDialogState(() {
+                            selectedMs = v.toInt();
+                          });
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          _formatDuration(Duration(milliseconds: 0)),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                        Text(
+                          _formatDuration(Duration(milliseconds: duration)),
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: TextButton.styleFrom(
+                              padding: const EdgeInsets.symmetric(vertical: 16),
+                            ),
+                            child: const Text(
+                              'Cancel',
+                              style: TextStyle(
+                                color: Colors.white70,
+                                fontSize: 16,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              await TrackLoopAfter.setLoopAfter(
+                                videoId,
+                                selectedMs,
+                              );
+                              Navigator.pop(context);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content: Text('Loop after set!'),
                                   duration: Duration(seconds: 2),
                                   backgroundColor: Colors.green,
                                 ),

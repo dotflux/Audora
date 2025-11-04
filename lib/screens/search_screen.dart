@@ -55,9 +55,7 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       List<Track> results;
       if (_source == SearchSource.youtube) {
-        final visitorData = await widget.audioManager.player.client
-            .getVisitorData();
-        results = await _youtubeSearch.search(query, visitorData: visitorData);
+        results = await _youtubeSearch.search(query);
       } else {
         results = await _spotifySearch.search(query);
       }
@@ -123,6 +121,51 @@ class _SearchScreenState extends State<SearchScreen> {
                     borderSide: BorderSide.none,
                   ),
                   prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                  suffixIcon: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _source = SearchSource.spotify);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _source == SearchSource.spotify
+                                ? const Color(0xFF0A84FF).withOpacity(0.25)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: SvgPicture.asset(
+                            'assets/icon/spotify.svg',
+                            width: 20,
+                            height: 20,
+                          ),
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () {
+                          setState(() => _source = SearchSource.youtube);
+                        },
+                        child: Container(
+                          margin: const EdgeInsets.only(right: 8, left: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: _source == SearchSource.youtube
+                                ? const Color(0xFF0A84FF).withOpacity(0.25)
+                                : Colors.transparent,
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: SvgPicture.asset(
+                            'assets/icon/youtube.svg',
+                            width: 20,
+                            height: 20,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
                 onSubmitted: _searchTracks,
               ),
@@ -274,48 +317,9 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ],
       ),
-      floatingActionButton: _buildSourceFAB(),
+      floatingActionButton: null,
       floatingActionButtonLocation: FloatingActionButtonLocation.endDocked,
     );
   }
 
-  Widget _buildSourceFAB() {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 80),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          _buildFABItem(
-            source: SearchSource.spotify,
-            iconPath: 'assets/icon/spotify.svg',
-          ),
-          const SizedBox(width: 12),
-          _buildFABItem(
-            source: SearchSource.youtube,
-            iconPath: 'assets/icon/youtube.svg',
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildFABItem({
-    required SearchSource source,
-    required String iconPath,
-  }) {
-    final isActive = _source == source;
-    return FloatingActionButton(
-      onPressed: () {
-        setState(() {
-          _source = source;
-        });
-      },
-      backgroundColor: isActive
-          ? const Color(0xFF0A84FF)
-          : const Color(0xFF121212),
-      elevation: isActive ? 8 : 4,
-      mini: true,
-      child: SvgPicture.asset(iconPath, width: 24, height: 24),
-    );
-  }
 }

@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:hive_flutter/hive_flutter.dart';
 import 'data/custom_playlists.dart';
 import 'data/track_best_parts.dart';
+import 'data/track_loop_after.dart';
 import 'data/downloads.dart';
 import 'data/download_progress.dart';
 
@@ -29,6 +30,7 @@ void main() async {
   await Hive.openBox('recentlyPlayed');
   await CustomPlaylists.init();
   await TrackBestParts.init();
+  await TrackLoopAfter.init();
   await Downloads.init();
   await DownloadProgressTracker.init();
 
