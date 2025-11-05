@@ -1,14 +1,16 @@
+import java.util.Properties
+import java.io.FileInputStream
+
 plugins {
     id("com.android.application")
     id("kotlin-android")
-
     id("dev.flutter.flutter-gradle-plugin")
 }
 
-def keystoreProperties = new Properties()
-def keystorePropertiesFile = rootProject.file("key.properties")
+val keystoreProperties = Properties()
+val keystorePropertiesFile = rootProject.file("key.properties")
 if (keystorePropertiesFile.exists()) {
-    keystoreProperties.load(new FileInputStream(keystorePropertiesFile))
+    keystoreProperties.load(FileInputStream(keystorePropertiesFile))
 }
 
 android {
@@ -36,24 +38,27 @@ android {
     }
 
     signingConfigs {
-        release {
-            keyAlias keystoreProperties["keyAlias"]
-            keyPassword keystoreProperties["keyPassword"]
-            storeFile keystoreProperties["storeFile"] ? file(keystoreProperties["storeFile"]) : null
-            storePassword keystoreProperties["storePassword"]
+        create("release") {
+            val alias = keystoreProperties["keyAlias"] as String?
+            val keyPwd = keystoreProperties["keyPassword"] as String?
+            val storePath = keystoreProperties["storeFile"] as String?
+            val storePwd = keystoreProperties["storePassword"] as String?
+
+            if (alias != null) keyAlias = alias
+            if (keyPwd != null) keyPassword = keyPwd
+            if (storePath != null) storeFile = file(storePath)
+            if (storePwd != null) storePassword = storePwd
         }
     }
 
     buildTypes {
-        release {
-            signingConfig = signingConfigs.release
-            minifyEnabled false
-            shrinkResources false
-            
+        getByName("release") {
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
-
-        debug {
-            signingConfig = signingConfigs.release
+        getByName("debug") {
+            signingConfig = signingConfigs.getByName("release")
         }
     }
 }
