@@ -6,7 +6,7 @@ Audora is a personal modern Flutter based music streaming app that lets you sear
 
 It’s designed to be lightweight, fast, and fully offline-capable after caching tracks + also capable of downloading tracks offline.
 
-![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+[![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)](#download)
 
 ## ✨ **Features**
 
