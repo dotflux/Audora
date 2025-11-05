@@ -16,24 +16,13 @@ class AudoraSearch {
     int limit = 20,
     String? visitorData,
   }) async {
-    client.ensureVisitorData();
-
-    final effectiveVisitorData = visitorData ?? client.cachedVisitorData ?? '';
-    log.d(
-      '🔍 Starting search with visitorData: ${effectiveVisitorData.isEmpty ? "empty (will work)" : "cached"}',
-    );
-
     final body = Map<String, dynamic>.from(
-      client.baseContext(visitorData: effectiveVisitorData),
+      client.baseContext(visitorData: visitorData),
     );
     body['query'] = query;
     body['params'] = filter;
 
-    final res = await client.post(
-      'search',
-      body,
-      visitorData: effectiveVisitorData,
-    );
+    final res = await client.post('search', body);
 
     final tabs =
         res['contents']?['tabbedSearchResultsRenderer']?['tabs'] as List?;

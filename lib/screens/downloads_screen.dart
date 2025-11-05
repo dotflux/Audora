@@ -4,6 +4,7 @@ import '../data/downloads.dart';
 import '../data/download_progress.dart';
 import '../audio_manager.dart';
 import '../audora_music.dart';
+import '../download_manager.dart';
 import 'dart:async';
 
 class DownloadsScreen extends StatefulWidget {
@@ -88,6 +89,18 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
           ),
         );
       }
+    }
+  }
+
+  Future<void> _cancelDownload(String videoId) async {
+    await DownloadManager.instance.cancel(videoId);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Download cancelled'),
+          duration: Duration(seconds: 2),
+        ),
+      );
     }
   }
 
@@ -343,7 +356,13 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
                     ],
                   ),
                   trailing: isInProgress
-                      ? null
+                      ? IconButton(
+                          icon: const Icon(
+                            Icons.cancel_outlined,
+                            color: Colors.white70,
+                          ),
+                          onPressed: () => _cancelDownload(item.videoId),
+                        )
                       : track != null
                       ? IconButton(
                           icon: const Icon(
@@ -372,13 +391,14 @@ class _DownloadsScreenState extends State<DownloadsScreen> {
             height: 14,
             child: CircularProgressIndicator(
               strokeWidth: 2,
+              value: progress.progress / 100.0,
               color: Colors.blue,
             ),
           ),
           const SizedBox(width: 4),
           Expanded(
             child: Text(
-              'Downloading..',
+              '${progress.progress}% - ${progress.status}',
               style: TextStyle(
                 color: Colors.blue.withOpacity(0.8),
                 fontSize: 12,

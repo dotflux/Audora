@@ -3,11 +3,6 @@ import 'package:http/http.dart' as http;
 import '../../utils/log.dart';
 
 class AudoraClient {
-  String? _cachedVisitorData;
-  Future<String?>? _visitorDataFuture;
-
-  String? get cachedVisitorData => _cachedVisitorData;
-
   String get currentClientVersion {
     final now = DateTime.now();
     final y = now.year;
@@ -24,77 +19,26 @@ class AudoraClient {
     'Origin': 'https://music.youtube.com',
     'Referer': 'https://music.youtube.com',
     'Content-Type': 'application/json',
-    'x-goog-visitor-id': visitorData ?? _cachedVisitorData ?? '',
+    'x-goog-visitor-id': visitorData ?? '',
     'Cookie': 'CONSENT=YES+1',
   };
 
-  Future<String?> getVisitorData({bool forceRefresh = false}) async {
-    if (!forceRefresh && _cachedVisitorData != null) {
-      return _cachedVisitorData;
-    }
+  Future<String?> getVisitorData() async {
+    final res = await http.get(
+      Uri.parse('https://music.youtube.com'),
+      headers: {
+        'User-Agent':
+            'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0',
+      },
+    );
 
-    if (_visitorDataFuture != null && !forceRefresh) {
-      return await _visitorDataFuture;
+    final reg = RegExp(r'ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;');
+    final match = reg.firstMatch(res.body);
+    if (match != null) {
+      final ytcfg = jsonDecode(match.group(1)!);
+      return ytcfg['VISITOR_DATA']?.toString();
     }
-
-    _visitorDataFuture = _fetchVisitorData();
-    try {
-      _cachedVisitorData = await _visitorDataFuture;
-      return _cachedVisitorData;
-    } finally {
-      _visitorDataFuture = null;
-    }
-  }
-
-  Future<String?> _fetchVisitorData() async {
-    log.d('🔍 Starting visitorData fetch...');
-    try {
-      final res = await http
-          .get(
-            Uri.parse('https://music.youtube.com'),
-            headers: {
-              'User-Agent':
-                  'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:88.0) Gecko/20100101 Firefox/88.0',
-            },
-          )
-          .timeout(const Duration(seconds: 5));
-
-      final reg = RegExp(r'ytcfg\.set\s*\(\s*({.+?})\s*\)\s*;');
-      final match = reg.firstMatch(res.body);
-      if (match != null) {
-        final ytcfg = jsonDecode(match.group(1)!);
-        final visitorData = ytcfg['VISITOR_DATA']?.toString();
-        if (visitorData != null) {
-          _cachedVisitorData = visitorData;
-          log.d('✅ VisitorData fetched and cached');
-          return visitorData;
-        }
-      }
-      log.d('⚠️ No visitorData found in response');
-    } catch (e) {
-      log.d('❌ Failed to fetch visitor data: $e');
-    }
-    log.d('📦 Returning cached visitorData: $_cachedVisitorData');
-    return _cachedVisitorData;
-  }
-
-  void ensureVisitorData() {
-    if (_cachedVisitorData == null && _visitorDataFuture == null) {
-      log.d('🚀 Starting background visitorData fetch...');
-      _visitorDataFuture = _fetchVisitorData();
-      _visitorDataFuture!
-          .then((v) {
-            _cachedVisitorData = v;
-            _visitorDataFuture = null;
-            log.d('✅ Background visitorData fetch completed');
-          })
-          .catchError((e) {
-            log.d('❌ Background visitorData fetch failed: $e');
-            _visitorDataFuture = null;
-          });
-    } else {
-      log.d('📦 VisitorData already cached or fetching: $_cachedVisitorData');
-    }
+    return null;
   }
 
   Map<String, dynamic> baseContext({String? visitorData}) => {
@@ -119,12 +63,13 @@ class AudoraClient {
       'https://music.youtube.com/youtubei/v1/$endpoint?key=AIzaSyDJ9lW0bJLwquuJFTMojyMu-Vh1ln-WFqg',
     );
 
-    final effectiveVisitorData = visitorData ?? _cachedVisitorData ?? '';
-    final headers = defaultHeaders(visitorData: effectiveVisitorData);
+    final headers = defaultHeaders(visitorData: visitorData);
 
-    final response = await http
-        .post(uri, headers: headers, body: jsonEncode(body))
-        .timeout(const Duration(seconds: 10));
+    final response = await http.post(
+      uri,
+      headers: headers,
+      body: jsonEncode(body),
+    );
 
     log.d('HTTP ${response.statusCode} for $endpoint');
 

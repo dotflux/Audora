@@ -145,6 +145,29 @@ class MainActivity : AudioServiceActivity() {
                     notificationManager?.cancel(NOTIFICATION_ID)
                     result.success(null)
                 }
+                "updatePlaybackState" -> {
+                    val args = call.arguments as? Map<*, *>
+                    val isPlaying = args?.get("isPlaying") as? Boolean ?: false
+                    val positionMs = (args?.get("positionMs") as? Number)?.toLong()
+                    val durationMs = (args?.get("durationMs") as? Number)?.toLong()
+
+                    updateMediaSessionPlaybackState(isPlaying, positionMs)
+
+                    try {
+                        currentBuilder?.let { builder ->
+                            if (positionMs != null && durationMs != null && durationMs > 0) {
+                                val max = durationMs.toInt().coerceAtLeast(1)
+                                val progress = positionMs.coerceAtMost(durationMs).toInt()
+                                builder.setProgress(max, progress, false)
+                            } else {
+                                builder.setProgress(0, 0, false)
+                            }
+                            notificationManager?.notify(NOTIFICATION_ID, builder.build())
+                        }
+                    } catch (_: Throwable) {}
+
+                    result.success(null)
+                }
                 else -> result.notImplemented()
             }
         }

@@ -65,28 +65,26 @@ class AudioManager {
                 break;
               case 'com.example.audora.ACTION_SEEK':
                 final positionMs = extras?['positionMs'] as int?;
-                if (positionMs != null && audioPlayer.duration != null) {
+                if (positionMs != null) {
                   final target = Duration(milliseconds: positionMs);
-                  if (target <= audioPlayer.duration!) {
-                    _isSeeking = true;
+                  _isSeeking = true;
 
-                    final durationMs = audioPlayer.duration?.inMilliseconds;
+                  final durationMs = audioPlayer.duration?.inMilliseconds;
 
-                    await AudoraNotification.updatePlaybackState(
-                      isPlaying: audioPlayer.playing,
-                      positionMs: positionMs,
-                      durationMs: durationMs,
-                    );
+                  await AudoraNotification.updatePlaybackState(
+                    isPlaying: audioPlayer.playing,
+                    positionMs: positionMs,
+                    durationMs: durationMs,
+                  );
 
-                    await audioPlayer.seek(target);
+                  await audioPlayer.seek(target);
 
-                    _lastNotificationUpdateMs =
-                        DateTime.now().millisecondsSinceEpoch;
+                  _lastNotificationUpdateMs =
+                      DateTime.now().millisecondsSinceEpoch;
 
-                    Future.delayed(const Duration(milliseconds: 1200), () {
-                      _isSeeking = false;
-                    });
-                  }
+                  Future.delayed(const Duration(milliseconds: 1200), () {
+                    _isSeeking = false;
+                  });
                 }
                 break;
               default:
@@ -102,6 +100,8 @@ class AudioManager {
       log.d(
         "PLAYER STATE: ${state.processingState}, playing: ${state.playing}",
       );
+
+      if (_isSeeking) return;
 
       if (currentTrack != null) {
         int? durationMs = audioPlayer.duration?.inMilliseconds;

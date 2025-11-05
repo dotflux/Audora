@@ -1,4 +1,5 @@
 import 'package:hive_flutter/hive_flutter.dart';
+import '../utils/log.dart';
 
 class DownloadProgress {
   final String videoId;
@@ -23,13 +24,14 @@ class DownloadProgress {
     'artist': artist,
   };
 
-  factory DownloadProgress.fromJson(Map<String, dynamic> json) => DownloadProgress(
-    videoId: json['videoId'],
-    progress: json['progress'],
-    status: json['status'],
-    title: json['title'],
-    artist: json['artist'],
-  );
+  factory DownloadProgress.fromJson(Map<String, dynamic> json) =>
+      DownloadProgress(
+        videoId: json['videoId'],
+        progress: json['progress'],
+        status: json['status'],
+        title: json['title'],
+        artist: json['artist'],
+      );
 }
 
 class DownloadProgressTracker {
@@ -40,15 +42,25 @@ class DownloadProgressTracker {
     _box = await Hive.openBox(_boxName);
   }
 
-  static void update(String videoId, int progress, String status, {String? title, String? artist}) {
+  static void update(
+    String videoId,
+    int progress,
+    String status, {
+    String? title,
+    String? artist,
+  }) {
+    log.d('[DL][PROGRESS] $videoId -> $progress% ($status)');
     final existing = get(videoId);
-    _box.put(videoId, DownloadProgress(
-      videoId: videoId,
-      progress: progress,
-      status: status,
-      title: title ?? existing?.title,
-      artist: artist ?? existing?.artist,
-    ).toJson());
+    _box.put(
+      videoId,
+      DownloadProgress(
+        videoId: videoId,
+        progress: progress,
+        status: status,
+        title: title ?? existing?.title,
+        artist: artist ?? existing?.artist,
+      ).toJson(),
+    );
   }
 
   static DownloadProgress? get(String videoId) {
@@ -58,16 +70,19 @@ class DownloadProgressTracker {
   }
 
   static void remove(String videoId) {
+    log.d('[DL][PROGRESS] removed $videoId');
     _box.delete(videoId);
   }
 
   static Map<String, DownloadProgress> getAll() {
+    log.d('[DL][PROGRESS] getAll count=${_box.values.length}');
     return Map.fromEntries(
       _box.values.map((v) {
-        final progress = DownloadProgress.fromJson(Map<String, dynamic>.from(v));
+        final progress = DownloadProgress.fromJson(
+          Map<String, dynamic>.from(v),
+        );
         return MapEntry(progress.videoId, progress);
       }),
     );
   }
 }
-

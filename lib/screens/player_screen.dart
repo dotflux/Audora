@@ -3,8 +3,6 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:audio_service/audio_service.dart';
-import 'package:http/http.dart' as http;
-import 'package:path_provider/path_provider.dart';
 import '../widgets/glow_album_art.dart';
 import '../widgets/position_slider.dart';
 import '../widgets/playback_controls.dart';
@@ -19,6 +17,8 @@ import '../data/downloads.dart';
 import '../data/download_progress.dart';
 import '../audora_music.dart';
 import '../widgets/add_to_playlist.dart';
+import "../utils/log.dart";
+import '../download_manager.dart';
 
 class PlayerScreen extends StatefulWidget {
   final AudioPlayer player;
@@ -909,7 +909,12 @@ class _PlayerScreenState extends State<PlayerScreen> {
 
   Future<void> _downloadTrack() async {
     if (media == null) return;
-    if (Downloads.isDownloaded(media!.id)) {
+    final String id = media!.id;
+    final String title = media!.title;
+    final String artist = media!.artist ?? '';
+    final Uri? artUri = media!.artUri;
+
+    if (Downloads.isDownloaded(id)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -923,88 +928,27 @@ class _PlayerScreenState extends State<PlayerScreen> {
     }
 
     try {
-      final appDir = await getApplicationDocumentsDirectory();
-      final downloadsDir = Directory('${appDir.path}/downloads');
-      if (!await downloadsDir.exists()) {
-        await downloadsDir.create(recursive: true);
-      }
-
+      log.d("[DL] Starting download for '$title' ($id)");
       DownloadProgressTracker.update(
-        media!.id,
+        id,
         0,
         'Fetching audio URL...',
-        title: media!.title,
-        artist: media!.artist ?? '',
+        title: title,
+        artist: artist,
       );
-      final audioUrl = await widget.audioManager.player.getAudioUrlExplode(
-        media!.id,
-      );
+      final audioUrl = await widget.audioManager.player.getAudioUrlExplode(id);
+      log.d('[DL] Audio URL fetched: ${audioUrl != null}');
       if (audioUrl == null) throw Exception('Failed to get audio URL');
-
-      DownloadProgressTracker.update(
-        media!.id,
-        10,
-        'Downloading audio...',
-        title: media!.title,
-        artist: media!.artist ?? '',
+      await DownloadManager.instance.enqueue(
+        videoId: id,
+        title: title,
+        artist: artist,
+        audioUri: Uri.parse(audioUrl),
+        artUri: artUri,
       );
-      final audioResponse = await http.get(Uri.parse(audioUrl));
-      if (audioResponse.statusCode != 200)
-        throw Exception('Failed to download audio');
-
-      final audioPath = '${downloadsDir.path}/${media!.id}.m4a';
-      final audioFile = File(audioPath);
-      await audioFile.writeAsBytes(audioResponse.bodyBytes);
-
-      String? albumArtPath;
-      if (media!.artUri != null) {
-        DownloadProgressTracker.update(
-          media!.id,
-          90,
-          'Downloading album art...',
-          title: media!.title,
-          artist: media!.artist ?? '',
-        );
-        try {
-          final artResponse = await http.get(media!.artUri!);
-          if (artResponse.statusCode == 200) {
-            albumArtPath = '${downloadsDir.path}/${media!.id}_art.jpg';
-            final artFile = File(albumArtPath);
-            await artFile.writeAsBytes(artResponse.bodyBytes);
-          }
-        } catch (_) {}
-      }
-
-      DownloadProgressTracker.update(
-        media!.id,
-        100,
-        'Saving...',
-        title: media!.title,
-        artist: media!.artist ?? '',
-      );
-      final downloadedTrack = DownloadedTrack(
-        videoId: media!.id,
-        title: media!.title,
-        artist: media!.artist ?? '',
-        albumArtPath: albumArtPath,
-        audioPath: audioPath,
-        downloadedAt: DateTime.now(),
-      );
-
-      await Downloads.add(downloadedTrack);
-      DownloadProgressTracker.remove(media!.id);
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Download completed!'),
-            duration: Duration(seconds: 2),
-            backgroundColor: Colors.green,
-          ),
-        );
-      }
     } catch (e) {
-      DownloadProgressTracker.remove(media!.id);
+      DownloadProgressTracker.remove(id);
+      log.d('[DL][ERROR] $id -> $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(

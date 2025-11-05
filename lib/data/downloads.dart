@@ -27,14 +27,15 @@ class DownloadedTrack {
     'downloadedAt': downloadedAt.toIso8601String(),
   };
 
-  factory DownloadedTrack.fromJson(Map<String, dynamic> json) => DownloadedTrack(
-    videoId: json['videoId'],
-    title: json['title'],
-    artist: json['artist'],
-    albumArtPath: json['albumArtPath'],
-    audioPath: json['audioPath'],
-    downloadedAt: DateTime.parse(json['downloadedAt']),
-  );
+  factory DownloadedTrack.fromJson(Map<String, dynamic> json) =>
+      DownloadedTrack(
+        videoId: json['videoId'],
+        title: json['title'],
+        artist: json['artist'],
+        albumArtPath: json['albumArtPath'],
+        audioPath: json['audioPath'],
+        downloadedAt: DateTime.parse(json['downloadedAt']),
+      );
 }
 
 class Downloads {
@@ -46,7 +47,9 @@ class Downloads {
   }
 
   static List<DownloadedTrack> getAll() {
-    return _box.values.map((v) => DownloadedTrack.fromJson(Map<String, dynamic>.from(v))).toList()
+    return _box.values
+        .map((v) => DownloadedTrack.fromJson(Map<String, dynamic>.from(v)))
+        .toList()
       ..sort((a, b) => b.downloadedAt.compareTo(a.downloadedAt));
   }
 
@@ -102,4 +105,3 @@ class Downloads {
     await _box.clear();
   }
 }
-
