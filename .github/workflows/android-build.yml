@@ -1,0 +1,63 @@
+name: Android CI/CD
+
+on:
+  push:
+    tags:
+      - "v*"
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.35.6"
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Run unit tests
+        run: flutter test --reporter expanded
+
+      - name: Run widget smoke tests
+        run: flutter test --reporter expanded
+
+      - name: Decode keystore
+        run: |
+          echo "${{ secrets.KEYSTORE_BASE64 }}" | base64 --decode > android/app/audora-release-key.jks
+
+      - name: Create key.properties
+        run: |
+          echo "storePassword=${{ secrets.STORE_PASSWORD }}" > android/key.properties
+          echo "keyPassword=${{ secrets.KEY_PASSWORD }}" >> android/key.properties
+          echo "keyAlias=${{ secrets.KEY_ALIAS }}" >> android/key.properties
+          echo "storeFile=../app/audora-release-key.jks" >> android/key.properties
+
+      - name: Build architecture-specific APKs
+        run: flutter build apk --release --split-per-abi
+
+      - name: Rename APKs by architecture
+        run: |
+          cd build/app/outputs/flutter-apk
+          mv app-armeabi-v7a-release.apk audora-armeabi-v7a.apk || true
+          mv app-arm64-v8a-release.apk audora-arm64-v8a.apk || true
+          mv app-x86_64-release.apk audora-x86_64.apk || true
+
+      - name: Upload release artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: audora-arch-apks
+          path: build/app/outputs/flutter-apk/audora-*.apk
+
+      - name: Publish to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: build/app/outputs/flutter-apk/audora-*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

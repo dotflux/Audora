@@ -1,4 +1,4 @@
-![Audora](./assets/icon/AudoraBanner.png)
+![Audora](./assets/docs/AudoraBanner.png)
 
 # Audora 🌀
 
@@ -6,18 +6,22 @@ Audora is a personal modern Flutter based music streaming app that lets you sear
 
 It’s designed to be lightweight, fast, and fully offline-capable after caching tracks + also capable of downloading tracks offline.
 
+![Android](https://img.shields.io/badge/Android-3DDC84?style=for-the-badge&logo=android&logoColor=white)
+
 ## ✨ **Features**
 
 ### 💽 **Ad-free Streaming**
 
 - Search songs, artists, albums
 - Stream high-quality audio from sources
+- View lyrics, Manage queue and MORE
 
 ### 🎧 **Custom Library**
 
 - Make and customise playlists
 - Add, delete, reorder tracks
 - Recently played system
+- Shuffle Feature for both custom and fetched playlists
 
 ### 📈 **Discover**
 
@@ -29,6 +33,7 @@ It’s designed to be lightweight, fast, and fully offline-capable after caching
 
 - Import spotify playlist via pasting url
 - Automatically matches songs and picks accurate tracks
+- Youtube playlists imports
 
 ### 🚂 **Powerful Audio Engine**
 
@@ -44,11 +49,29 @@ It’s designed to be lightweight, fast, and fully offline-capable after caching
 - Dynamic track based player
 - Clean screens management
 
+### 🎹 **Unique Features**
+
+- "Best Part" Feature, sets a track's best part
+- "Go back to Best Part" Button, once clicked sets song duration to the specified best part
+- "Loop to Best Part" Feature, if loop enabled it loops to best part
+- "Loop After" Feature, if value is set then the song loops after a certain part specified, Works along with Best Part
+- Spotify's search (takes longer time to search)
+
+### 🔻 **Smart Download**
+
+- Offline Download, allows download from both search (spotify and youtube)
+- Auto retries download if fails
+- Max 4 downloads at once
+
 ## 📸 **Screenshots**
 
-### Home page, Library page, Custom playlist, Player screen (One Strip Screenshot).
+### Home page, Search, Library, Options (One Strip Screenshot).
 
-![AppSs](./assets/icon/AppSs.png)
+![AppSs](./assets/docs/AppSs.png)
+
+### Options, Downloads, Custom Playlist, Lyrics
+
+![AppSs2](./assets/docs/AppSs2.png)
 
 ## 📏 **Project Structure**
 
@@ -56,14 +79,15 @@ It’s designed to be lightweight, fast, and fully offline-capable after caching
 
 |lib:.
 |   audio_manager.dart
+|   download_manager.dart
 |   audora_music.dart
+|   audora_notification.dart
 |   main.dart
 |
 +---data
 |       Hive data models
 |
 +---repository
-|   |   audio_handler.dart
 |   |
 |   +---spotify
 |   |       api files
@@ -129,3 +153,7 @@ For further instructions 👉 [Contributing](CONTRIBUTING.md)
 
 MIT License © 2025 dotflux
 Feel free to fork, remix, and contribute, just credit the original project.
+
+## Download
+
+[![Download Audora](https://img.shields.io/github/v/release/dotflux/Audora?label=Download%20APK&color=brightgreen&logo=android)](https://github.com/dotflux/Audora/releases/latest)
