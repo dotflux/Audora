@@ -10,10 +10,10 @@ class AudoraSearch {
 
   AudoraSearch(this.client);
 
-  Future<List<Track>> search(
+  Future<({List<Track> tracks, String? continuation})> searchPaged(
     String query, {
     String filter = Params.songs,
-    int limit = 20,
+    int pageSize = 20,
     String? visitorData,
   }) async {
     final body = Map<String, dynamic>.from(
@@ -23,23 +23,79 @@ class AudoraSearch {
     body['params'] = filter;
 
     final res = await client.post('search', body);
+    return _parseSearchResponse(res, limit: pageSize);
+  }
 
-    final tabs =
-        res['contents']?['tabbedSearchResultsRenderer']?['tabs'] as List?;
-    if (tabs == null || tabs.isEmpty) {
-      log.d('No tabs found in response');
-      return [];
-    }
+  Future<({List<Track> tracks, String? continuation})> searchNext(
+    String continuation, {
+    int pageSize = 20,
+    String? visitorData,
+  }) async {
+    final ctx = client.baseContext(visitorData: visitorData);
+    final body = {'context': ctx['context'], 'continuation': continuation};
+    final res = await client.post('search', body);
+    return _parseSearchResponse(res, limit: pageSize);
+  }
 
-    final sections =
-        tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents']
-            as List?;
-    if (sections == null) {
-      log.d('No sections found in first tab');
-      return [];
-    }
+  Future<List<Track>> search(
+    String query, {
+    String filter = Params.songs,
+    int limit = 20,
+    String? visitorData,
+  }) async {
+    final page = await searchPaged(
+      query,
+      filter: filter,
+      pageSize: limit,
+      visitorData: visitorData,
+    );
+    return page.tracks;
+  }
 
+  ({List<Track> tracks, String? continuation}) _parseSearchResponse(
+    Map<String, dynamic> res, {
+    required int limit,
+  }) {
     final tracks = <Track>[];
+
+    final List<List> candidateSections = [];
+    try {
+      final tabs =
+          res['contents']?['tabbedSearchResultsRenderer']?['tabs'] as List?;
+      if (tabs != null && tabs.isNotEmpty) {
+        final list =
+            tabs[0]?['tabRenderer']?['content']?['sectionListRenderer']?['contents']
+                as List?;
+        if (list != null) candidateSections.add(list);
+      }
+    } catch (_) {}
+    try {
+      final list =
+          res['continuationContents']?['sectionListContinuation']?['contents']
+              as List?;
+      if (list != null) candidateSections.add(list);
+    } catch (_) {}
+    try {
+      final list =
+          res['continuationContents']?['musicShelfContinuation']?['contents']
+              as List?;
+      if (list != null) candidateSections.add(list);
+    } catch (_) {}
+    try {
+      final commands = res['onResponseReceivedCommands'] as List?;
+      if (commands != null) {
+        for (final cmd in commands) {
+          final items =
+              cmd?['appendContinuationItemsAction']?['continuationItems']
+                  as List?;
+          if (items != null) candidateSections.add(items);
+        }
+      }
+    } catch (_) {}
+    if (candidateSections.isEmpty) {
+      log.d('No sections found in search response');
+      return (tracks: const <Track>[], continuation: null);
+    }
 
     String? findPlaylistId(dynamic node) {
       if (node == null) return null;
@@ -88,121 +144,182 @@ class AudoraSearch {
     }
 
     final seenTitles = <String>{};
+    String? nextContinuation;
 
-    for (var section in sections) {
-      List? items;
-
-      if (section['musicShelfRenderer'] != null) {
-        items = section['musicShelfRenderer']['contents'] as List?;
-      } else if (section['musicCardShelfRenderer'] != null) {
-        items = section['musicCardShelfRenderer']['contents'] as List?;
-      } else {
-        continue;
-      }
-
-      if (items == null) continue;
-
-      for (var item in items) {
-        final renderer = item['musicResponsiveListItemRenderer'] ?? item;
-        if (renderer == null) {
-          continue;
-        }
-
-        final flexColumns = renderer['flexColumns'] as List? ?? [];
-        String title = '';
-        String artist = '';
-
-        if (flexColumns.isNotEmpty) {
-          final titleRuns =
-              flexColumns[0]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
-                  as List?;
-          if (titleRuns != null && titleRuns.isNotEmpty) {
-            title = (titleRuns.map((r) => r['text'] ?? '').join()).toString();
+    String? _findContinuationInNode(dynamic node) {
+      try {
+        if (node is Map) {
+          final ncd = node['nextContinuationData']?['continuation'];
+          if (ncd is String && ncd.isNotEmpty) return ncd;
+          final token =
+              node['continuationEndpoint']?['continuationCommand']?['token'];
+          if (token is String && token.isNotEmpty) return token;
+          for (final v in node.values) {
+            final t = _findContinuationInNode(v);
+            if (t != null) return t;
           }
-
-          for (var i = 1; i < flexColumns.length; i++) {
-            final runs =
-                flexColumns[i]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
-                    as List?;
-            if (runs != null) {
-              for (var run in runs) {
-                if (run['navigationEndpoint']?['browseEndpoint'] != null) {
-                  artist = run['text'] ?? '';
-                  break;
-                }
-              }
-            }
-            if (artist.isNotEmpty) break;
+        } else if (node is List) {
+          for (final v in node) {
+            final t = _findContinuationInNode(v);
+            if (t != null) return t;
           }
         }
+      } catch (_) {}
+      return null;
+    }
 
-        String videoId = '';
-        try {
-          videoId =
-              renderer['navigationEndpoint']?['watchEndpoint']?['videoId'] ??
-              renderer['overlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchEndpoint']?['videoId'] ??
-              '';
-        } catch (_) {
-          videoId = '';
-        }
+    for (final sections in candidateSections) {
+      for (var section in sections) {
+        List? items;
 
-        String? thumbnail;
-        try {
-          final thumbsNode =
-              renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'];
-          thumbnail = pickBestThumbnail(thumbsNode);
-        } catch (_) {
-          thumbnail = null;
-        }
+        if (section['musicShelfRenderer'] != null) {
+          items = section['musicShelfRenderer']['contents'] as List?;
 
-        final playlistId = findPlaylistId(renderer);
-
-        final isPlaylist =
-            playlistId != null && playlistId.isNotEmpty && (videoId == '');
-
-        final normalizedTitle = (title.isNotEmpty ? title : 'Unknown Title')
-            .trim()
-            .toLowerCase();
-
-        if (seenTitles.contains(normalizedTitle)) {
-          continue;
-        }
-
-        if (isPlaylist) {
           try {
-            final preview = await fetchPlaylist(playlistId, limit: 1);
-            if (preview.isEmpty) {
-              continue;
+            final conts =
+                section['musicShelfRenderer']['continuations'] as List?;
+            if (conts != null && conts.isNotEmpty) {
+              nextContinuation = conts
+                  .first['nextContinuationData']?['continuation']
+                  ?.toString();
             }
-          } catch (e) {
-            log.d('Playlist probe failed for $playlistId: $e');
+          } catch (_) {}
+        } else if (section['musicShelfContinuation'] != null) {
+          items = section['musicShelfContinuation']['contents'] as List?;
+          nextContinuation ??= _findContinuationInNode(
+            section['musicShelfContinuation'],
+          );
+        } else if (section['musicCardShelfRenderer'] != null) {
+          items = section['musicCardShelfRenderer']['contents'] as List?;
+        } else if (section['musicResponsiveListItemRenderer'] != null) {
+          items = [section];
+        } else {
+          continue;
+        }
+
+        if (items == null) continue;
+
+        for (var item in items) {
+          final renderer = item['musicResponsiveListItemRenderer'] ?? item;
+          if (renderer == null) {
             continue;
           }
-        }
 
-        if ((videoId.isNotEmpty) || isPlaylist) {
-          final effectiveTitle = title.isNotEmpty ? title : 'Unknown Title';
-          tracks.add(
-            Track(
-              title: effectiveTitle,
-              artist: artist,
-              videoId: videoId,
-              thumbnail: thumbnail,
-              playlistId: playlistId,
-              isPlaylist: isPlaylist,
-            ),
-          );
+          final flexColumns = renderer['flexColumns'] as List? ?? [];
+          String title = '';
+          String artist = '';
 
-          seenTitles.add(normalizedTitle);
+          if (flexColumns.isNotEmpty) {
+            final titleRuns =
+                flexColumns[0]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
+                    as List?;
+            if (titleRuns != null && titleRuns.isNotEmpty) {
+              title = (titleRuns.map((r) => r['text'] ?? '').join()).toString();
+            }
+
+            for (var i = 1; i < flexColumns.length; i++) {
+              final runs =
+                  flexColumns[i]?['musicResponsiveListItemFlexColumnRenderer']?['text']?['runs']
+                      as List?;
+              if (runs != null) {
+                for (var run in runs) {
+                  if (run['navigationEndpoint']?['browseEndpoint'] != null) {
+                    artist = run['text'] ?? '';
+                    break;
+                  }
+                }
+              }
+              if (artist.isNotEmpty) break;
+            }
+          }
+
+          String videoId = '';
+          try {
+            videoId =
+                renderer['navigationEndpoint']?['watchEndpoint']?['videoId'] ??
+                renderer['overlay']?['musicItemThumbnailOverlayRenderer']?['content']?['musicPlayButtonRenderer']?['playNavigationEndpoint']?['watchEndpoint']?['videoId'] ??
+                '';
+          } catch (_) {
+            videoId = '';
+          }
+
+          String? thumbnail;
+          try {
+            final movingThumbs =
+                renderer['richThumbnail']?['movingThumbnailRenderer']?['movingThumbnailDetails']?['thumbnails'] ??
+                renderer['richThumbnail']?['richThumbnailRenderer']?['movingThumbnailRenderer']?['movingThumbnailDetails']?['thumbnails'];
+            final movingUrl = pickBestThumbnail(movingThumbs);
+            if (movingUrl != null && movingUrl.isNotEmpty) {
+              thumbnail = movingUrl;
+            }
+          } catch (_) {}
+          try {
+            if (thumbnail == null) {
+              final thumbsNode =
+                  renderer['thumbnail']?['musicThumbnailRenderer']?['thumbnail']?['thumbnails'];
+              thumbnail = pickBestThumbnail(thumbsNode);
+            }
+          } catch (_) {
+            thumbnail = null;
+          }
+
+          final playlistId = findPlaylistId(renderer);
+          final isPlaylist =
+              playlistId != null && playlistId.isNotEmpty && (videoId == '');
+
+          String? musicVideoType;
+          try {
+            musicVideoType =
+                renderer['navigationEndpoint']?['watchEndpoint']?['watchEndpointMusicSupportedConfigs']?['watchEndpointMusicConfig']?['musicVideoType']
+                    ?.toString();
+          } catch (_) {
+            musicVideoType = null;
+          }
+
+          if (musicVideoType != null &&
+              musicVideoType.isNotEmpty &&
+              videoId.isNotEmpty) {
+            if (thumbnail == null || !thumbnail.contains('an_webp')) {
+              thumbnail = 'https://i.ytimg.com/vi/' + videoId + '/hq720.jpg';
+            }
+          }
+
+          final normalizedTitle = (title.isNotEmpty ? title : 'Unknown Title')
+              .trim()
+              .toLowerCase();
+
+          if (seenTitles.contains(normalizedTitle)) {
+            continue;
+          }
+
+          if (videoId.isNotEmpty && !isPlaylist) {
+            final effectiveTitle = title.isNotEmpty ? title : 'Unknown Title';
+            tracks.add(
+              Track(
+                title: effectiveTitle,
+                artist: artist,
+                videoId: videoId,
+                thumbnail: thumbnail,
+
+                playlistId: null,
+                isPlaylist: false,
+              ),
+            );
+
+            seenTitles.add(normalizedTitle);
+          }
+
+          if (tracks.length >= limit) break;
         }
 
         if (tracks.length >= limit) break;
       }
-
-      if (tracks.length >= limit) break;
     }
 
-    return tracks;
+    return (
+      tracks: tracks.take(limit).toList(),
+      continuation: nextContinuation,
+    );
   }
 
   Future<List<Track>> fetchPlaylist(String playlistId, {int limit = 50}) async {

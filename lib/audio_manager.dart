@@ -42,59 +42,77 @@ class AudioManager {
   AudioManager(this.player) {
     _search = AudoraSearch(player.client);
     AudoraNotification.init();
-    AudoraNotification.onAction =
-        (String action, {Map<String, dynamic>? extras}) async {
-          log.d('Notification action received: $action');
-          try {
-            switch (action) {
-              case 'com.example.audora.ACTION_PREV':
-                await skipToPrevious();
-                break;
-              case 'com.example.audora.ACTION_TOGGLE':
-                if (audioPlayer.playing) {
-                  await audioPlayer.pause();
-                } else {
-                  await audioPlayer.play();
-                }
-                break;
-              case 'com.example.audora.ACTION_NEXT':
-                await skipToNext();
-                break;
-              case 'com.example.audora.ACTION_BEST_PART':
-                await seekToBestPart();
-                break;
-              case 'com.example.audora.ACTION_SEEK':
-                final positionMs = extras?['positionMs'] as int?;
-                if (positionMs != null) {
-                  final target = Duration(milliseconds: positionMs);
-                  _isSeeking = true;
 
-                  final durationMs = audioPlayer.duration?.inMilliseconds;
-
-                  await AudoraNotification.updatePlaybackState(
-                    isPlaying: audioPlayer.playing,
-                    positionMs: positionMs,
-                    durationMs: durationMs,
-                  );
-
-                  await audioPlayer.seek(target);
-
-                  _lastNotificationUpdateMs =
-                      DateTime.now().millisecondsSinceEpoch;
-
-                  Future.delayed(const Duration(milliseconds: 1200), () {
-                    _isSeeking = false;
-                  });
-                }
-                break;
-              default:
-                log.d('Unknown notification action: $action');
+    AudoraNotification
+        .onAction = (String action, {Map<String, dynamic>? extras}) async {
+      log.d('Notification action received: $action');
+      AudoraNotification.testChannel();
+      try {
+        switch (action) {
+          case 'com.example.audora.ACTION_PREV':
+            await skipToPrevious();
+            break;
+          case 'com.example.audora.ACTION_TOGGLE':
+            if (audioPlayer.playing) {
+              await audioPlayer.pause();
+            } else {
+              await audioPlayer.play();
             }
-          } catch (e, st) {
-            log.d('[ERROR] handling notification action: $e');
-            log.d(st);
-          }
-        };
+            break;
+          case 'com.example.audora.ACTION_NEXT':
+            await skipToNext();
+            break;
+          case 'com.example.audora.ACTION_BEST_PART':
+            await seekToBestPart();
+            break;
+          case 'com.example.audora.ACTION_SEEK_TO':
+            final positionMs = extras?['positionMs'] as int?;
+            log.d("Seek recieved, position: $positionMs");
+            if (positionMs != null) {
+              final target = Duration(milliseconds: positionMs);
+              _isSeeking = true;
+
+              _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
+
+              log.d('SEEKING TO THE TARGET BY DURATION MANIPULATION');
+              log.d('target: $target');
+              log.d('positionMs: $positionMs');
+              log.d('audioPlayer.duration: ${audioPlayer.duration}');
+              log.d(
+                'audioPlayer.duration?.inMilliseconds: ${audioPlayer.duration?.inMilliseconds}',
+              );
+              log.d('audioPlayer.position: ${audioPlayer.position}');
+              log.d(
+                'audioPlayer.position.inMilliseconds: ${audioPlayer.position.inMilliseconds}',
+              );
+              log.d('audioPlayer.playing: ${audioPlayer.playing}');
+              log.d('audioPlayer.playing: ${audioPlayer.playing}');
+
+              await audioPlayer.seek(target);
+
+              final durationMs = audioPlayer.duration?.inMilliseconds;
+
+              await AudoraNotification.updatePlaybackState(
+                isPlaying: audioPlayer.playing,
+                positionMs: positionMs,
+                durationMs: durationMs,
+              );
+
+              _lastNotificationUpdateMs = DateTime.now().millisecondsSinceEpoch;
+
+              Future.delayed(const Duration(milliseconds: 1200), () {
+                _isSeeking = false;
+              });
+            }
+            break;
+          default:
+            log.d('Unknown notification action: $action');
+        }
+      } catch (e, st) {
+        log.d('[ERROR] handling notification action: $e');
+        log.d(st);
+      }
+    };
 
     audioPlayer.playerStateStream.listen((state) async {
       log.d(
@@ -173,7 +191,10 @@ class AudioManager {
         _handleTrackComplete();
       }
 
-      if (_isSeeking) return;
+      if (_isSeeking) {
+        log.d('Position stream blocked - seeking in progress');
+        return;
+      }
 
       if (currentTrack != null) {
         try {
@@ -181,8 +202,7 @@ class AudioManager {
           final nowMs = DateTime.now().millisecondsSinceEpoch;
 
           final shouldUpdate =
-              nowMs - _lastNotificationUpdateMs >= _notificationThrottleMs ||
-              (pos.inMilliseconds % 5000 < 100);
+              nowMs - _lastNotificationUpdateMs >= _notificationThrottleMs;
 
           if (shouldUpdate) {
             await AudoraNotification.updatePlaybackState(
@@ -502,6 +522,7 @@ class AudioManager {
     if (bestPartMs != null && audioPlayer.duration != null) {
       final target = Duration(milliseconds: bestPartMs);
       if (target < audioPlayer.duration!) {
+        log.d('SEEKING TO THE TARGET BY DURATION MANIPULATION');
         await audioPlayer.seek(target);
       }
     }

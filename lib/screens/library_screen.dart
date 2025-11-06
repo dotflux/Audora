@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import '../widgets/default_playlist_art.dart';
 import '../repository/spotify/spotify_api.dart';
 import '../repository/spotify/spotify_import.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 class LibraryScreen extends StatefulWidget {
   final Future<void> Function(Track, {List<Track>? queue}) playTrack;
@@ -36,15 +37,12 @@ class _LibraryScreenState extends State<LibraryScreen> {
     _loadPlaylists();
   }
 
-
   Future<void> _showImportOptions() async {
     final option = await showDialog<String>(
       context: context,
       builder: (context) => AlertDialog(
         backgroundColor: const Color(0xFF181818),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
         title: const Text(
           'Import Playlist',
           style: TextStyle(color: Colors.white),
@@ -53,7 +51,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             ListTile(
-              leading: const Icon(Icons.music_note, color: Colors.white),
+              leading: SvgPicture.asset(
+                'assets/icon/spotify.svg',
+                width: 24,
+                height: 24,
+              ),
               title: const Text(
                 'Import from Spotify',
                 style: TextStyle(color: Colors.white),
@@ -65,7 +67,11 @@ class _LibraryScreenState extends State<LibraryScreen> {
             ),
             const SizedBox(height: 8),
             ListTile(
-              leading: const Icon(Icons.play_circle_outline, color: Colors.white),
+              leading: SvgPicture.asset(
+                'assets/icon/youtube.svg',
+                width: 24,
+                height: 24,
+              ),
               title: const Text(
                 'Import from YouTube',
                 style: TextStyle(color: Colors.white),
@@ -163,11 +169,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _ProgressDialog(
-        key: progressKey,
-        done: done,
-        total: total,
-      ),
+      builder: (context) =>
+          _ProgressDialog(key: progressKey, done: done, total: total),
     );
 
     try {
@@ -297,7 +300,9 @@ class _LibraryScreenState extends State<LibraryScreen> {
 
     String? playlistId;
     if (playlistIdOrUrl.contains('list=')) {
-      final match = RegExp(r'list=([A-Za-z0-9_-]+)').firstMatch(playlistIdOrUrl);
+      final match = RegExp(
+        r'list=([A-Za-z0-9_-]+)',
+      ).firstMatch(playlistIdOrUrl);
       playlistId = match?.group(1);
     } else {
       playlistId = playlistIdOrUrl;
@@ -324,11 +329,8 @@ class _LibraryScreenState extends State<LibraryScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => _ProgressDialog(
-        key: progressKey,
-        done: done,
-        total: total,
-      ),
+      builder: (context) =>
+          _ProgressDialog(key: progressKey, done: done, total: total),
     );
 
     try {
@@ -339,31 +341,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
       if (tracks.isEmpty) {
         if (mounted) Navigator.of(context).pop();
         if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(const SnackBar(content: Text('No tracks found in playlist')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No tracks found in playlist')),
+        );
         return;
       }
 
       total = tracks.length;
       progressKey.currentState?.update(done, total);
 
-      final playlistName = 'YouTube Playlist ${DateTime.now().millisecondsSinceEpoch}';
+      final playlistName =
+          'YouTube Playlist ${DateTime.now().millisecondsSinceEpoch}';
       await CustomPlaylists.createPlaylist(playlistName);
-
-      if (tracks.isNotEmpty && tracks[0].thumbnail != null) {
-        try {
-          final coverUrl = tracks[0].thumbnail!;
-          final response = await http.get(Uri.parse(coverUrl));
-          if (response.statusCode == 200) {
-            final appDir = await getApplicationDocumentsDirectory();
-            final coverPath = '${appDir.path}/cover_$playlistName.jpg';
-            final file = File(coverPath);
-            await file.writeAsBytes(response.bodyBytes);
-            await CustomPlaylists.setCoverImage(playlistName, coverPath);
-          }
-        } catch (_) {}
-      }
 
       for (final track in tracks) {
         await CustomPlaylists.addTrack(playlistName, track);
@@ -564,10 +553,7 @@ class _ProgressDialogState extends State<_ProgressDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       backgroundColor: Colors.black,
-      title: const Text(
-        'Importing...',
-        style: TextStyle(color: Colors.white),
-      ),
+      title: const Text('Importing...', style: TextStyle(color: Colors.white)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [

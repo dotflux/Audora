@@ -159,45 +159,66 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
           "Edit Playlist",
           style: TextStyle(color: Colors.white),
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            GestureDetector(
-              onTap: () async {
-                final picked = await picker.pickImage(
-                  source: ImageSource.gallery,
-                );
-                if (picked != null) {
-                  newCover = picked.path;
-                }
-              },
-              child: CircleAvatar(
-                radius: 40,
-                backgroundImage: newCover != null
-                    ? FileImage(File(newCover!))
-                    : null,
-                backgroundColor: Colors.white12,
-                child: newCover == null
-                    ? const Icon(Icons.camera_alt, color: Colors.white70)
-                    : null,
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: controller,
-              style: const TextStyle(color: Colors.white),
-              decoration: const InputDecoration(
-                hintText: "Playlist name",
-                hintStyle: TextStyle(color: Colors.white54),
-                enabledBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white24),
+        content: StatefulBuilder(
+          builder: (context, setLocalState) {
+            final imageFile = newCover != null ? File(newCover!) : null;
+            final hasImage = imageFile != null && imageFile.existsSync();
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GestureDetector(
+                  onTap: () async {
+                    final picked = await picker.pickImage(
+                      source: ImageSource.gallery,
+                    );
+                    if (picked != null) {
+                      setLocalState(() {
+                        newCover = picked.path;
+                      });
+                    }
+                  },
+                  child: Container(
+                    width: 80,
+                    height: 80,
+                    decoration: const BoxDecoration(
+                      color: Colors.white12,
+                      shape: BoxShape.circle,
+                    ),
+                    child: ClipOval(
+                      child: hasImage
+                          ? Image.file(
+                              imageFile!,
+                              key: ValueKey(newCover),
+                              width: 80,
+                              height: 80,
+                              fit: BoxFit.cover,
+                            )
+                          : const Icon(
+                              Icons.camera_alt,
+                              color: Colors.white70,
+                              size: 28,
+                            ),
+                    ),
+                  ),
                 ),
-                focusedBorder: UnderlineInputBorder(
-                  borderSide: BorderSide(color: Colors.white),
+                const SizedBox(height: 16),
+                TextField(
+                  controller: controller,
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    hintText: "Playlist name",
+                    hintStyle: TextStyle(color: Colors.white54),
+                    enabledBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white24),
+                    ),
+                    focusedBorder: UnderlineInputBorder(
+                      borderSide: BorderSide(color: Colors.white),
+                    ),
+                  ),
                 ),
-              ),
-            ),
-          ],
+              ],
+            );
+          },
         ),
         actions: [
           TextButton(
@@ -415,9 +436,17 @@ class _PlaylistScreenState extends State<PlaylistScreen> {
 
     final topWidget = _tracks.isNotEmpty && _tracks[0].thumbnail != null
         ? Image.network(_tracks[0].thumbnail!, fit: BoxFit.cover)
-        : (customImage != null
-              ? Image.file(File(customImage), fit: BoxFit.cover)
-              : DefaultPlaylistArt(title: widget.title, size: 140));
+        : (() {
+            if (customImage != null) {
+              final f = File(customImage);
+              if (f.existsSync()) {
+                try {
+                  return Image.file(f, fit: BoxFit.cover);
+                } catch (_) {}
+              }
+            }
+            return DefaultPlaylistArt(title: widget.title, size: 140);
+          })();
 
     return Scaffold(
       backgroundColor: Colors.black,

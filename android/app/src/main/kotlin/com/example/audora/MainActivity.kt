@@ -31,11 +31,10 @@ class MainActivity : AudioServiceActivity() {
     private val METHOD_CHANNEL = "audora/notification"
     private val NOTIFICATION_ID = 1
 
-
     private val ACTION_PREV = "com.example.audora.ACTION_PREV"
     private val ACTION_TOGGLE = "com.example.audora.ACTION_TOGGLE"
     private val ACTION_NEXT = "com.example.audora.ACTION_NEXT"
-    private val ACTION_SEEK = "com.example.audora.ACTION_SEEK"
+    private val ACTION_SEEK_TO = "com.example.audora.ACTION_SEEK_TO"
     private val ACTION_BEST_PART = "com.example.audora.ACTION_BEST_PART"
 
     private var notificationManager: NotificationManager? = null
@@ -43,12 +42,10 @@ class MainActivity : AudioServiceActivity() {
     private lateinit var mediaSession: MediaSessionCompat
     private val executor = Executors.newSingleThreadExecutor()
 
- 
     private var currentBuilder: NotificationCompat.Builder? = null
     private var currentBitmap: Bitmap? = null
     private var currentArtworkUrl: String? = null
     private var currentAccentColor: Int? = null
-
 
     private val actionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
@@ -57,10 +54,16 @@ class MainActivity : AudioServiceActivity() {
                 val extras = if (intent.hasExtra("positionMs")) {
                     mapOf("positionMs" to intent.getLongExtra("positionMs", 0L))
                 } else null
-                methodChannel.invokeMethod("onNotificationAction", mapOf(
-                    "action" to action,
-                    "extras" to (extras ?: emptyMap<String, Any>())
-                ))
+                runOnUiThread {
+                    try {
+                        methodChannel.invokeMethod("onNotificationAction", mapOf(
+                            "action" to action,
+                            "extras" to (extras ?: emptyMap<String, Any>())
+                        ))
+                    } catch (t: Throwable) {
+                        t.printStackTrace()
+                    }
+                }
             } catch (t: Throwable) {
                 t.printStackTrace()
             }
@@ -88,46 +91,67 @@ class MainActivity : AudioServiceActivity() {
             override fun onPlay() {
                 super.onPlay()
                 try {
-                    methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_TOGGLE))
+                    runOnUiThread {
+                        try { methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_TOGGLE)) } catch (t: Throwable) { t.printStackTrace() }
+                    }
                 } catch (t: Throwable) { t.printStackTrace() }
             }
 
             override fun onPause() {
                 super.onPause()
                 try {
-                    methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_TOGGLE))
+                    runOnUiThread {
+                        try { methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_TOGGLE)) } catch (t: Throwable) { t.printStackTrace() }
+                    }
                 } catch (t: Throwable) { t.printStackTrace() }
             }
 
             override fun onSkipToNext() {
                 super.onSkipToNext()
                 try {
-                    methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_NEXT))
+                    runOnUiThread {
+                        try { methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_NEXT)) } catch (t: Throwable) { t.printStackTrace() }
+                    }
                 } catch (t: Throwable) { t.printStackTrace() }
             }
 
             override fun onSkipToPrevious() {
                 super.onSkipToPrevious()
                 try {
-                    methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_PREV))
+                    runOnUiThread {
+                        try { methodChannel.invokeMethod("onNotificationAction", mapOf("action" to ACTION_PREV)) } catch (t: Throwable) { t.printStackTrace() }
+                    }
                 } catch (t: Throwable) { t.printStackTrace() }
             }
 
             override fun onSeekTo(pos: Long) {
-                super.onSeekTo(pos)
-                try {
-                    methodChannel.invokeMethod("onNotificationAction", mapOf(
-                        "action" to ACTION_SEEK,
-                        "extras" to mapOf("positionMs" to pos)
-                    ))
-                } catch (t: Throwable) { t.printStackTrace() }
-            }
+    super.onSeekTo(pos)
+    android.util.Log.d("SEEK_DEBUG", "MediaSession onSeekTo called with position: $pos")
+    try {
+        runOnUiThread {
+            try {
+                methodChannel.invokeMethod("onNotificationAction", mapOf(
+                    "action" to ACTION_SEEK_TO,
+                    "extras" to mapOf("positionMs" to pos)
+                ))
+            } catch (t: Throwable) { t.printStackTrace() }
+        }
+        android.util.Log.d("SEEK_DEBUG", "Method channel invoked successfully")
+    } catch (t: Throwable) { 
+        t.printStackTrace()
+        android.util.Log.e("SEEK_DEBUG", "Method channel failed: ${t.message}")
+    }
+}
         })
 
         methodChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, METHOD_CHANNEL)
 
         methodChannel.setMethodCallHandler { call, result ->
             when (call.method) {
+                "test" -> {
+            android.util.Log.d("CHANNEL_TEST", "Flutter test method received!")
+            result.success(null)
+        }
                 "show" -> {
                     val args = call.arguments as? Map<*, *>
                     val title = args?.get("title") as? String ?: "Playing"
@@ -137,6 +161,7 @@ class MainActivity : AudioServiceActivity() {
                     val positionMs = (args?.get("positionMs") as? Number)?.toLong()
                     val durationMs = (args?.get("durationMs") as? Number)?.toLong()
                     val hasBestPart = args?.get("hasBestPart") as? Boolean ?: false
+                    android.util.Log.d("BEST_PART", "BEST PART STATUS: $hasBestPart")
 
                     showNotification(title, artist, isPlaying, artworkUrl, positionMs, durationMs, hasBestPart)
                     result.success(null)
@@ -152,20 +177,19 @@ class MainActivity : AudioServiceActivity() {
                     val durationMs = (args?.get("durationMs") as? Number)?.toLong()
 
                     updateMediaSessionPlaybackState(isPlaying, positionMs)
-
-                    try {
-                        currentBuilder?.let { builder ->
-                            if (positionMs != null && durationMs != null && durationMs > 0) {
-                                val max = durationMs.toInt().coerceAtLeast(1)
-                                val progress = positionMs.coerceAtMost(durationMs).toInt()
-                                builder.setProgress(max, progress, false)
-                            } else {
-                                builder.setProgress(0, 0, false)
-                            }
-                            notificationManager?.notify(NOTIFICATION_ID, builder.build())
+                    
+                    
+                    currentBuilder?.let { builder ->
+                        if (positionMs != null && durationMs != null && durationMs > 0) {
+                            val max = durationMs.toInt().coerceAtLeast(1)
+                            val progress = positionMs.coerceAtMost(durationMs).toInt()
+                            builder.setProgress(max, progress, false)
+                        } else {
+                            builder.setProgress(0, 0, false)
                         }
-                    } catch (_: Throwable) {}
-
+                        notificationManager?.notify(NOTIFICATION_ID, builder.build())
+                    }
+                    
                     result.success(null)
                 }
                 else -> result.notImplemented()
@@ -177,6 +201,7 @@ class MainActivity : AudioServiceActivity() {
             addAction(ACTION_TOGGLE)
             addAction(ACTION_NEXT)
             addAction(ACTION_BEST_PART)
+            addAction(ACTION_SEEK_TO)
         }
         registerReceiver(actionReceiver, filter)
     }
@@ -201,13 +226,14 @@ class MainActivity : AudioServiceActivity() {
     }
 
     private fun updateMediaSessionMetadata(title: String, artist: String, durationMs: Long?) {
-        val metaBuilder = MediaMetadataCompat.Builder()
-            .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
-            .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
-        if (durationMs != null) metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs)
-        currentBitmap?.let { metaBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
-        mediaSession.setMetadata(metaBuilder.build())
-    }
+    val metaBuilder = MediaMetadataCompat.Builder()
+        .putString(MediaMetadataCompat.METADATA_KEY_TITLE, title)
+        .putString(MediaMetadataCompat.METADATA_KEY_ARTIST, artist)
+  
+    metaBuilder.putLong(MediaMetadataCompat.METADATA_KEY_DURATION, durationMs ?: 0L)
+    currentBitmap?.let { metaBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, it) }
+    mediaSession.setMetadata(metaBuilder.build())
+}
 
     private fun updateMediaSessionPlaybackState(isPlaying: Boolean, positionMs: Long?) {
         val actions = (PlaybackStateCompat.ACTION_PLAY
@@ -235,10 +261,19 @@ class MainActivity : AudioServiceActivity() {
         durationMs: Long?,
         hasBestPart: Boolean = false
     ) {
+
+        android.util.Log.d("NOTIFICATION_DEBUG", 
+        "Showing notification with duration: $durationMs, position: $positionMs")
+
         updateMediaSessionMetadata(title, artist, durationMs)
         updateMediaSessionPlaybackState(isPlaying, positionMs)
 
-        val compactViewIndices = intArrayOf(0,2,3)
+        val playbackState = mediaSession.controller.playbackState
+    android.util.Log.d("NOTIFICATION_DEBUG", 
+        "MediaSession playback state: $playbackState, actions: ${playbackState?.actions}")
+
+     
+        val compactViewIndices = if (hasBestPart) intArrayOf(0, 1, 3) else intArrayOf(0, 1, 2)
 
         if (!artworkUrl.isNullOrEmpty() && artworkUrl != currentArtworkUrl) {
             currentBitmap = null
@@ -269,14 +304,7 @@ class MainActivity : AudioServiceActivity() {
         } catch (_: Throwable) {
         }
 
-        builder.addAction(
-            NotificationCompat.Action(
-                android.R.drawable.ic_menu_rotate,
-                "Best Part",
-                mediaPendingIntentFor(ACTION_BEST_PART)
-            )
-        )
-
+       
         builder.addAction(
             NotificationCompat.Action(
                 android.R.drawable.ic_media_previous,
@@ -302,28 +330,17 @@ class MainActivity : AudioServiceActivity() {
             )
         )
 
-        if (positionMs != null && durationMs != null && durationMs > 0) {
-            val max = durationMs.toInt().coerceAtLeast(1)
-            val progress = positionMs.coerceAtMost(durationMs).toInt()
-            builder.setProgress(max, progress, false)
-
-            val seekIntent = Intent(ACTION_SEEK).apply {
-                setPackage(packageName)
-                putExtra("positionMs", positionMs)
-            }
-            val seekPendingIntent = PendingIntent.getBroadcast(
-                this,
-                999,
-                seekIntent,
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                    PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
-                } else {
-                    PendingIntent.FLAG_UPDATE_CURRENT
-                }
+        if (hasBestPart) {
+            builder.addAction(
+                NotificationCompat.Action(
+                    android.R.drawable.ic_menu_rotate,
+                    "Best Part",
+                    mediaPendingIntentFor(ACTION_BEST_PART)
+                )
             )
-        } else {
-            builder.setProgress(0, 0, false)
         }
+
+        
 
         currentAccentColor?.let { color ->
             builder.setColor(color)
@@ -375,13 +392,6 @@ class MainActivity : AudioServiceActivity() {
 
                             updatedBuilder.addAction(
                                 NotificationCompat.Action(
-                                    android.R.drawable.ic_menu_rotate,
-                                    "Best Part",
-                                    mediaPendingIntentFor(ACTION_BEST_PART)
-                                )
-                            )
-                            updatedBuilder.addAction(
-                                NotificationCompat.Action(
                                     android.R.drawable.ic_media_previous,
                                     "Previous",
                                     mediaPendingIntentFor(ACTION_PREV)
@@ -403,13 +413,17 @@ class MainActivity : AudioServiceActivity() {
                                 )
                             )
 
-                            if (positionMs != null && durationMs != null && durationMs > 0) {
-                                val max = durationMs.toInt().coerceAtLeast(1)
-                                val progress = positionMs.coerceAtMost(durationMs).toInt()
-                                updatedBuilder.setProgress(max, progress, false)
-                            } else {
-                                updatedBuilder.setProgress(0, 0, false)
+                            if (hasBestPart) {
+                                updatedBuilder.addAction(
+                                    NotificationCompat.Action(
+                                        android.R.drawable.ic_menu_rotate,
+                                        "Best Part",
+                                        mediaPendingIntentFor(ACTION_BEST_PART)
+                                    )
+                                )
                             }
+
+                           
 
                             currentBuilder = updatedBuilder
                             notificationManager?.notify(NOTIFICATION_ID, updatedBuilder.build())
@@ -497,7 +511,6 @@ class MainActivity : AudioServiceActivity() {
             android.R.drawable.ic_media_play
         }
     }
-
 
     override fun onDestroy() {
         super.onDestroy()

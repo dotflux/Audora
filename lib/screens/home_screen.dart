@@ -61,6 +61,36 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<List<Track>> _loadPickedForYou() async {
+    try {
+      final recent = await RecentlyPlayed.getTracks();
+      if (recent.isEmpty) return [];
+
+      final seeds = recent.take(4).toList();
+      final recentIds = recent.map((e) => e.videoId).toSet();
+
+      final futures = seeds.map(
+        (t) => widget.search.getRelatedSongs(t.videoId),
+      );
+      final lists = await Future.wait(futures);
+      final combined = lists
+          .expand((e) => e)
+          .where((t) => t.isPlaylist != true)
+          .toList();
+
+      final seen = <String>{};
+      final filtered = <Track>[];
+      for (final t in combined) {
+        if (recentIds.contains(t.videoId)) continue;
+        if (seen.add(t.videoId)) filtered.add(t);
+      }
+
+      return filtered.take(20).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
   @override
   void dispose() {
     _recentlyPlayedSub?.cancel();
@@ -120,12 +150,17 @@ class _HomeScreenState extends State<HomeScreen> {
         });
 
         try {
+          final pfy = await _loadPickedForYou();
           final results = await Future.wait([
             ...countryFutures,
             ...genreFutures,
           ]);
-          final full = {'Top Charts': topTracks, ...Map.fromEntries(results)};
-          _cachedCharts = full;
+
+          final ordered = <String, List<Track>>{'Top Charts': topTracks};
+          if (pfy.isNotEmpty) ordered['Picked for you'] = pfy;
+          ordered.addAll(Map.fromEntries(results));
+
+          _cachedCharts = ordered;
           _lastFetchTime = DateTime.now();
           if (mounted) setState(() => _loadingMoreSections = false);
         } catch (_) {
@@ -225,7 +260,9 @@ class _HomeScreenState extends State<HomeScreen> {
           }
 
           final top = charts['Top Charts'] ?? [];
-          final others = Map.of(charts)..remove('Top Charts');
+          final others = Map.of(charts)
+            ..remove('Top Charts')
+            ..remove('Picked for you');
 
           if (top.isNotEmpty) {
             WidgetsBinding.instance.addPostFrameCallback(
@@ -284,7 +321,6 @@ class _HomeScreenState extends State<HomeScreen> {
                     const SizedBox(height: 12),
                     _buildRecentlyPlayed(),
                     const SizedBox(height: 30),
-
                     if (top.isNotEmpty) ...[
                       const Text(
                         "Top Charts",
@@ -297,6 +333,20 @@ class _HomeScreenState extends State<HomeScreen> {
                       const SizedBox(height: 14),
                       _buildTopCarousel(top),
                       const SizedBox(height: 32),
+                    ],
+
+                    if ((charts['Picked for you'] ?? []).isNotEmpty) ...[
+                      const Text(
+                        'Picked for you',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      _buildHorizontalList(charts['Picked for you']!),
+                      const SizedBox(height: 24),
                     ],
 
                     for (final entry in others.entries) ...[

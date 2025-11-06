@@ -62,9 +62,11 @@ class AudoraClient {
     final uri = Uri.parse(
       'https://music.youtube.com/youtubei/v1/$endpoint?key=AIzaSyDJ9lW0bJLwquuJFTMojyMu-Vh1ln-WFqg',
     );
+    log.d("URI: $uri, vISIDORDATA: $visitorData");
 
     final headers = defaultHeaders(visitorData: visitorData);
-
+    log.d("HEADERS: $headers");
+    log.d("BODY: $body");
     final response = await http.post(
       uri,
       headers: headers,
@@ -141,7 +143,7 @@ class AudoraClient {
               'Accept-Language': 'en-US,en;q=0.9',
             },
           )
-          .timeout(const Duration(seconds: 25));
+          .timeout(const Duration(seconds: 8));
       if (res.statusCode != 200) return [];
       final body = res.body;
       final m =

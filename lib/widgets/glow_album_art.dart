@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/painting.dart';
 import 'package:palette_generator/palette_generator.dart';
+import '../utils/log.dart';
 
 class GlowingAlbumArt extends StatefulWidget {
   final String imageUrl;
@@ -55,6 +56,7 @@ class _GlowingAlbumArtState extends State<GlowingAlbumArt>
 
   Future<void> _extractPalette() async {
     final url = widget.imageUrl;
+    log.d('glow url: $url');
     if (url.isEmpty) return;
 
     if (_paletteCache.containsKey(url)) {

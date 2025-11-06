@@ -57,21 +57,21 @@ class SpotifyImporter {
       }
       String query = '$title $artists official audio';
       Map<String, dynamic>? best;
-      for (int attempt = 0; attempt < 3; attempt++) {
+      for (int attempt = 0; attempt < 2; attempt++) {
         try {
           final res1 = await ytmClient
               .ytSearchRaw(query)
-              .timeout(const Duration(seconds: 25));
+              .timeout(const Duration(seconds: 20));
           best = _pickBestRaw(res1, title, artists, durationSec);
           if (best == null && attempt == 0) {
             final res2 = await ytmClient
                 .ytSearchRaw('$title $artists')
-                .timeout(const Duration(seconds: 25));
+                .timeout(const Duration(seconds: 20));
             best = _pickBestRaw(res2, title, artists, durationSec);
           }
           if (best != null) break;
         } catch (_) {}
-        await Future.delayed(Duration(milliseconds: 400 * (attempt + 1)));
+        await Future.delayed(Duration(milliseconds: 300 * (attempt + 1)));
       }
       if (best != null) {
         albumArt ??= best['thumb'] as String?;

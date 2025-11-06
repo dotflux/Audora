@@ -12,10 +12,21 @@ class AudoraNotification {
 
   static void init() {
     _channel.setMethodCallHandler((call) async {
+      log.d(
+        '🔔 MethodChannel received call: ${call.method} with args: ${call.arguments}',
+      );
       if (call.method == 'onNotificationAction') {
         final args = call.arguments as Map<dynamic, dynamic>?;
         final action = args?['action'] as String?;
-        final extras = args?['extras'] as Map<String, dynamic>?;
+        final rawExtras = args?['extras'];
+        Map<String, dynamic>? extras;
+        if (rawExtras is Map) {
+          try {
+            extras = Map<String, dynamic>.from(rawExtras);
+          } catch (_) {
+            extras = rawExtras.map((k, v) => MapEntry(k.toString(), v));
+          }
+        }
         if (action != null) {
           log.d('Native action received: $action');
           if (onAction != null) await onAction!(action, extras: extras);
@@ -67,6 +78,16 @@ class AudoraNotification {
       });
     } on MissingPluginException {
       _supportsUpdatePlayback = false;
+    }
+  }
+
+  static Future<void> testChannel() async {
+    log.d('🔔 Testing method channel...');
+    try {
+      await _channel.invokeMethod('test');
+      log.d('🔔 Test method invoked successfully');
+    } catch (e) {
+      log.d('🔔 Test method failed: $e');
     }
   }
 }
